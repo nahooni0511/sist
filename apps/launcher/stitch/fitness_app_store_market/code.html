@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#13ec5b",
+                        "background-light": "#f6f8f6",
+                        "background-dark": "#102216",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            scrollbar-width: thin;
+            scrollbar-color: #13ec5b #102216;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #102216;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #13ec5b;
+            border-radius: 20px;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen font-display">
+<!-- Sidebar Navigation -->
+<aside class="fixed left-0 top-0 h-full w-20 md:w-64 bg-white/5 border-r border-primary/10 backdrop-blur-md hidden md:flex flex-col z-50">
+<div class="p-6 flex items-center gap-3">
+<div class="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
+<span class="material-icons text-background-dark">bolt</span>
+</div>
+<span class="text-xl font-bold tracking-tight text-primary">BIOSTORE</span>
+</div>
+<nav class="flex-1 px-4 space-y-2 mt-4">
+<a class="flex items-center gap-4 px-4 py-3 bg-primary/10 text-primary rounded-xl transition-all" href="#">
+<span class="material-icons">grid_view</span>
+<span class="font-medium">Marketplace</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all" href="#">
+<span class="material-icons">fitness_center</span>
+<span class="font-medium">My Training</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all" href="#">
+<span class="material-icons">downloading</span>
+<span class="font-medium">Downloads</span>
+</a>
+<a class="flex items-center gap-4 px-4 py-3 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all" href="#">
+<span class="material-icons">settings</span>
+<span class="font-medium">Device Sync</span>
+</a>
+</nav>
+<div class="p-6 mt-auto">
+<div class="bg-primary/5 rounded-xl p-4 border border-primary/10">
+<p class="text-xs text-slate-400 uppercase tracking-wider mb-2">Device Status</p>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+<span class="text-sm font-medium">Kinetic-X Pro</span>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="md:ml-64 min-h-screen">
+<!-- Header / Search -->
+<header class="sticky top-0 z-40 bg-background-dark/80 backdrop-blur-xl border-b border-primary/10 px-6 py-4">
+<div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+<div class="relative flex-1 max-w-2xl">
+<span class="material-icons absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">search</span>
+<input class="w-full bg-primary/5 border border-primary/20 rounded-xl py-3 pl-12 pr-4 text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all" placeholder="Search for heart monitors, yoga flows, HIIT routines..." type="text"/>
+</div>
+<div class="flex items-center gap-4">
+<button class="relative p-2 text-slate-400 hover:text-primary transition-colors">
+<span class="material-icons text-2xl">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full"></span>
+</button>
+<div class="flex items-center gap-3 pl-4 border-l border-primary/10">
+<div class="text-right hidden sm:block">
+<p class="text-sm font-bold">Alex Rivera</p>
+<p class="text-xs text-primary">Pro Member</p>
+</div>
+<img class="w-10 h-10 rounded-full border border-primary/30 object-cover" data-alt="User profile avatar of a fitness enthusiast" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDfCBcb7Qjhrh2iuo1peOyDIQMiFO6VwkJaUwE0QrUKOrmgyitOPCE0GXtvm90zSJeFmLJEdtZcgnoJnZeNIPsd2DtYlrzr-2FsCJlVzeFMwuvr35tOAceERWxgtYBKX19XDcj7wSujI6lOdFdlakQO9ACZOir4g-iUdL_9u7l09epBB3q_gBuY1KESgxq1SBm0be4JW2EmVwlZEk3SSXNeVcKQj4VJ8pJGQPEnFkFqsHCsaFGY82um4VnT5V3i7zmyPBy3XhUdN9c"/>
+</div>
+</div>
+</div>
+</header>
+<div class="p-6 max-w-7xl mx-auto space-y-8">
+<!-- Hero Banner -->
+<section class="relative overflow-hidden rounded-xl h-[300px] group">
+<div class="absolute inset-0 bg-gradient-to-r from-background-dark via-background-dark/60 to-transparent z-10"></div>
+<img class="absolute inset-0 w-full h-full object-cover" data-alt="Professional athlete training in a high-tech gym" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBisLM1wRv6T17HyGfi_0unBPmb6pNgSWBi1D4ItYMvQYd78j0kZ_ecs-Z1zu2sHLEuP2EPgK9a-qdjtIGDkhUm9HNCnbodKFo35DnWc9QB4-OPD1XuZnObwFpOSstVELesUQxHqvL639tETT_0c7hwA_KnnGoj5xR2mhPh5odaF4mVHxw_Z-Nlmm8CGqrDu1M25kd08qXmJp6bWqjLcX1cbru76BFKBzCROddnXVom0W1skjlCLNF-T05DC8_wNJQ5_6D66EHrb3o"/>
+<div class="relative z-20 h-full flex flex-col justify-center px-10 max-w-lg space-y-4">
+<span class="inline-block px-3 py-1 bg-primary text-background-dark text-xs font-bold rounded-full w-fit">APP OF THE WEEK</span>
+<h2 class="text-4xl font-bold leading-tight">Ultra-Marathon Pro v2.0</h2>
+<p class="text-slate-300">Advanced biomechanical tracking for long-distance runners. Sync with your Kinetic-X device for real-time form correction.</p>
+<button class="bg-primary hover:bg-primary/80 text-background-dark px-8 py-3 rounded-xl font-bold transition-transform active:scale-95 flex items-center gap-2 w-fit">
+<span class="material-icons">download</span> Get Started
+                    </button>
+</div>
+</section>
+<!-- Categories -->
+<section class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+<button class="px-6 py-2 bg-primary text-background-dark rounded-full font-bold whitespace-nowrap">All Apps</button>
+<button class="px-6 py-2 bg-primary/10 hover:bg-primary/20 text-slate-300 rounded-full font-medium whitespace-nowrap transition-colors">Heart Rate</button>
+<button class="px-6 py-2 bg-primary/10 hover:bg-primary/20 text-slate-300 rounded-full font-medium whitespace-nowrap transition-colors">Yoga &amp; Flow</button>
+<button class="px-6 py-2 bg-primary/10 hover:bg-primary/20 text-slate-300 rounded-full font-medium whitespace-nowrap transition-colors">HIIT</button>
+<button class="px-6 py-2 bg-primary/10 hover:bg-primary/20 text-slate-300 rounded-full font-medium whitespace-nowrap transition-colors">Sleep Tracker</button>
+<button class="px-6 py-2 bg-primary/10 hover:bg-primary/20 text-slate-300 rounded-full font-medium whitespace-nowrap transition-colors">Nutrition</button>
+<button class="px-6 py-2 bg-primary/10 hover:bg-primary/20 text-slate-300 rounded-full font-medium whitespace-nowrap transition-colors">Recovery</button>
+</section>
+<!-- Featured Apps Grid -->
+<section class="space-y-6">
+<div class="flex items-center justify-between">
+<h3 class="text-2xl font-bold">Trending Fitness Tools</h3>
+<a class="text-primary hover:underline font-medium flex items-center gap-1" href="#">View All <span class="material-icons text-sm">arrow_forward</span></a>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+<!-- App Card 1 -->
+<div class="bg-white/5 border border-primary/10 rounded-xl p-5 hover:bg-primary/5 hover:border-primary/30 transition-all group flex flex-col">
+<div class="flex items-start justify-between mb-4">
+<div class="w-16 h-16 bg-gradient-to-br from-primary/30 to-primary/10 rounded-xl flex items-center justify-center border border-primary/20 overflow-hidden">
+<span class="material-icons text-3xl text-primary">favorite</span>
+</div>
+<span class="flex items-center gap-1 text-primary">
+<span class="material-icons text-sm">star</span>
+<span class="text-sm font-bold">4.9</span>
+</span>
+</div>
+<h4 class="text-lg font-bold group-hover:text-primary transition-colors">CardioMax AI</h4>
+<p class="text-xs text-slate-400 mb-6">Bio-Feedback Analytics</p>
+<div class="mt-auto pt-4 flex items-center justify-between border-t border-primary/5">
+<span class="text-sm font-bold">$4.99</span>
+<button class="bg-primary text-background-dark px-4 py-2 rounded-lg text-sm font-bold hover:scale-105 transition-transform">INSTALL</button>
+</div>
+</div>
+<!-- App Card 2 -->
+<div class="bg-white/5 border border-primary/10 rounded-xl p-5 hover:bg-primary/5 hover:border-primary/30 transition-all group flex flex-col">
+<div class="flex items-start justify-between mb-4">
+<div class="w-16 h-16 bg-gradient-to-br from-indigo-500/20 to-primary/10 rounded-xl flex items-center justify-center border border-primary/20 overflow-hidden">
+<span class="material-icons text-3xl text-primary">self_improvement</span>
+</div>
+<span class="flex items-center gap-1 text-primary">
+<span class="material-icons text-sm">star</span>
+<span class="text-sm font-bold">4.7</span>
+</span>
+</div>
+<h4 class="text-lg font-bold group-hover:text-primary transition-colors">ZenYoga Flow</h4>
+<p class="text-xs text-slate-400 mb-6">Meditation &amp; Mobility</p>
+<div class="mt-auto pt-4 flex items-center justify-between border-t border-primary/5">
+<span class="text-sm font-bold text-primary uppercase">Free</span>
+<button class="bg-primary text-background-dark px-4 py-2 rounded-lg text-sm font-bold hover:scale-105 transition-transform">GET</button>
+</div>
+</div>
+<!-- App Card 3 -->
+<div class="bg-white/5 border border-primary/10 rounded-xl p-5 hover:bg-primary/5 hover:border-primary/30 transition-all group flex flex-col">
+<div class="flex items-start justify-between mb-4">
+<div class="w-16 h-16 bg-gradient-to-br from-orange-500/20 to-primary/10 rounded-xl flex items-center justify-center border border-primary/20 overflow-hidden">
+<span class="material-icons text-3xl text-primary">bolt</span>
+</div>
+<span class="flex items-center gap-1 text-primary">
+<span class="material-icons text-sm">star</span>
+<span class="text-sm font-bold">4.8</span>
+</span>
+</div>
+<h4 class="text-lg font-bold group-hover:text-primary transition-colors">HIIT Burner</h4>
+<p class="text-xs text-slate-400 mb-6">Interval Training Labs</p>
+<div class="mt-auto pt-4 flex items-center justify-between border-t border-primary/5">
+<span class="text-sm font-bold">$2.99</span>
+<button class="bg-primary/20 text-primary border border-primary/30 px-4 py-2 rounded-lg text-sm font-bold hover:bg-primary hover:text-background-dark transition-all">OPEN</button>
+</div>
+</div>
+<!-- App Card 4 -->
+<div class="bg-white/5 border border-primary/10 rounded-xl p-5 hover:bg-primary/5 hover:border-primary/30 transition-all group flex flex-col">
+<div class="flex items-start justify-between mb-4">
+<div class="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-primary/10 rounded-xl flex items-center justify-center border border-primary/20 overflow-hidden">
+<span class="material-icons text-3xl text-primary">nights_stay</span>
+</div>
+<span class="flex items-center gap-1 text-primary">
+<span class="material-icons text-sm">star</span>
+<span class="text-sm font-bold">4.5</span>
+</span>
+</div>
+<h4 class="text-lg font-bold group-hover:text-primary transition-colors">SleepWise Pro</h4>
+<p class="text-xs text-slate-400 mb-6">Circadian Rhythm Tracking</p>
+<div class="mt-auto pt-4 flex items-center justify-between border-t border-primary/5">
+<span class="text-sm font-bold">$7.99</span>
+<button class="bg-primary text-background-dark px-4 py-2 rounded-lg text-sm font-bold hover:scale-105 transition-transform">INSTALL</button>
+</div>
+</div>
+<!-- App Card 5 -->
+<div class="bg-white/5 border border-primary/10 rounded-xl p-5 hover:bg-primary/5 hover:border-primary/30 transition-all group flex flex-col">
+<div class="flex items-start justify-between mb-4">
+<div class="w-16 h-16 bg-gradient-to-br from-red-500/20 to-primary/10 rounded-xl flex items-center justify-center border border-primary/20 overflow-hidden">
+<span class="material-icons text-3xl text-primary">monitor_heart</span>
+</div>
+<span class="flex items-center gap-1 text-primary">
+<span class="material-icons text-sm">star</span>
+<span class="text-sm font-bold">4.9</span>
+</span>
+</div>
+<h4 class="text-lg font-bold group-hover:text-primary transition-colors">Pulse Monitor</h4>
+<p class="text-xs text-slate-400 mb-6">Live ECG Visualization</p>
+<div class="mt-auto pt-4 flex items-center justify-between border-t border-primary/5">
+<span class="text-sm font-bold uppercase text-primary">Free Trial</span>
+<button class="bg-primary text-background-dark px-4 py-2 rounded-lg text-sm font-bold hover:scale-105 transition-transform">GET</button>
+</div>
+</div>
+<!-- App Card 6 -->
+<div class="bg-white/5 border border-primary/10 rounded-xl p-5 hover:bg-primary/5 hover:border-primary/30 transition-all group flex flex-col">
+<div class="flex items-start justify-between mb-4">
+<div class="w-16 h-16 bg-gradient-to-br from-emerald-500/20 to-primary/10 rounded-xl flex items-center justify-center border border-primary/20 overflow-hidden">
+<span class="material-icons text-3xl text-primary">restaurant</span>
+</div>
+<span class="flex items-center gap-1 text-primary">
+<span class="material-icons text-sm">star</span>
+<span class="text-sm font-bold">4.6</span>
+</span>
+</div>
+<h4 class="text-lg font-bold group-hover:text-primary transition-colors">MacroFuel</h4>
+<p class="text-xs text-slate-400 mb-6">Smart Meal Planning</p>
+<div class="mt-auto pt-4 flex items-center justify-between border-t border-primary/5">
+<span class="text-sm font-bold">$1.99</span>
+<button class="bg-primary text-background-dark px-4 py-2 rounded-lg text-sm font-bold hover:scale-105 transition-transform">INSTALL</button>
+</div>
+</div>
+<!-- App Card 7 -->
+<div class="bg-white/5 border border-primary/10 rounded-xl p-5 hover:bg-primary/5 hover:border-primary/30 transition-all group flex flex-col">
+<div class="flex items-start justify-between mb-4">
+<div class="w-16 h-16 bg-gradient-to-br from-yellow-500/20 to-primary/10 rounded-xl flex items-center justify-center border border-primary/20 overflow-hidden">
+<span class="material-icons text-3xl text-primary">timer</span>
+</div>
+<span class="flex items-center gap-1 text-primary">
+<span class="material-icons text-sm">star</span>
+<span class="text-sm font-bold">4.4</span>
+</span>
+</div>
+<h4 class="text-lg font-bold group-hover:text-primary transition-colors">RepCounter AI</h4>
+<p class="text-xs text-slate-400 mb-6">Computer Vision Tracker</p>
+<div class="mt-auto pt-4 flex items-center justify-between border-t border-primary/5">
+<span class="text-sm font-bold text-primary uppercase">Installed</span>
+<button class="bg-primary/20 text-primary border border-primary/30 px-4 py-2 rounded-lg text-sm font-bold hover:bg-primary hover:text-background-dark transition-all">OPEN</button>
+</div>
+</div>
+<!-- App Card 8 -->
+<div class="bg-white/5 border border-primary/10 rounded-xl p-5 hover:bg-primary/5 hover:border-primary/30 transition-all group flex flex-col">
+<div class="flex items-start justify-between mb-4">
+<div class="w-16 h-16 bg-gradient-to-br from-fuchsia-500/20 to-primary/10 rounded-xl flex items-center justify-center border border-primary/20 overflow-hidden">
+<span class="material-icons text-3xl text-primary">water_drop</span>
+</div>
+<span class="flex items-center gap-1 text-primary">
+<span class="material-icons text-sm">star</span>
+<span class="text-sm font-bold">4.3</span>
+</span>
+</div>
+<h4 class="text-lg font-bold group-hover:text-primary transition-colors">HydroTrack</h4>
+<p class="text-xs text-slate-400 mb-6">Sweat &amp; Hydration Log</p>
+<div class="mt-auto pt-4 flex items-center justify-between border-t border-primary/5">
+<span class="text-sm font-bold uppercase text-primary">Free</span>
+<button class="bg-primary text-background-dark px-4 py-2 rounded-lg text-sm font-bold hover:scale-105 transition-transform">GET</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Device Information Section -->
+<section class="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-12">
+<div class="bg-gradient-to-br from-primary/10 to-transparent border border-primary/10 rounded-xl p-8 flex flex-col justify-center">
+<h3 class="text-2xl font-bold mb-4">Storage Used</h3>
+<div class="w-full bg-slate-800 h-4 rounded-full overflow-hidden mb-2">
+<div class="bg-primary h-full w-2/3"></div>
+</div>
+<div class="flex justify-between text-sm">
+<span class="text-slate-400">8.4 GB of 12.0 GB used</span>
+<span class="text-primary font-bold">65% Full</span>
+</div>
+</div>
+<div class="bg-white/5 border border-primary/10 rounded-xl p-8 flex items-center justify-between">
+<div>
+<h3 class="text-2xl font-bold mb-2">Updates Available</h3>
+<p class="text-slate-400">4 apps have pending system updates.</p>
+</div>
+<button class="px-6 py-3 border-2 border-primary text-primary hover:bg-primary hover:text-background-dark rounded-xl font-bold transition-all">
+                        Update All
+                    </button>
+</div>
+</section>
+</div>
+</main>
+<!-- Bottom Navigation (Mobile Only) -->
+<div class="fixed bottom-0 left-0 w-full bg-background-dark border-t border-primary/10 flex md:hidden justify-around items-center p-4 z-50">
+<button class="text-primary"><span class="material-icons">grid_view</span></button>
+<button class="text-slate-500"><span class="material-icons">fitness_center</span></button>
+<button class="text-slate-500"><span class="material-icons">downloading</span></button>
+<button class="text-slate-500"><span class="material-icons">settings</span></button>
+</div>
+</body></html>

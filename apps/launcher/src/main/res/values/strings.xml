@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">Sistrun Launcher</string>
+    <string name="start_button">START</string>
+    <string name="start_measurement">측정 시작</string>
+    <string name="start_workout">운동 시작하기</string>
+    <string name="home_summary">오늘 06:15 이후 마지막으로 측정했습니다.</string>
+    <string name="launcher_time_placeholder">14:30</string>
+    <string name="launcher_date_placeholder">Monday, Oct 24</string>
+    <string name="usage_notice">이용 방법 및 주의사항</string>
+    <string name="usage_notice_placeholder">이용 방법 및 주의사항 안내는 준비 중입니다.</string>
+    <string name="usage_info_icon">이용 방법 안내 아이콘</string>
+    <string name="start_workout_icon">운동 시작 아이콘</string>
+    <string name="launcher_version">v1.0.4</string>
+    <string name="open_app_drawer">앱 목록 열기</string>
+    <string name="open_store_market">스토어 열기</string>
+    <string name="store_market_title">Fitness App Store Market</string>
+    <string name="store_search_hint">Search for heart monitors, yoga flows, HIIT routines...</string>
+    <string name="back_to_home">Home</string>
+    <string name="open_store_short">Store</string>
+    <string name="app_drawer_title">App Drawer</string>
+    <string name="search_apps_hint">Search applications...</string>
+    <string name="app_drawer_footer">앱을 선택하면 즉시 실행됩니다.</string>
+    <string name="registered_apps_title">등록된 앱</string>
+    <string name="app_not_installed">%1$s 앱을 실행할 수 없습니다.</string>
+    <string name="fallback_open_settings">실행 가능한 앱이 없어 설정을 엽니다.</string>
+    <string name="open_manager">관리자 열기</string>
+    <string name="manager_not_installed">관리자 앱이 설치되어 있지 않습니다.</string>
+</resources>

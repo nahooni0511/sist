@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PE Board - Random Team Generator</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                    },
+                    fontFamily: {
+                        "display": ["Lexend"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Lexend', sans-serif;
+            overflow: hidden;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #137fec44;
+            border-radius: 10px;
+        }
+        .team-card-gradient {
+            background: linear-gradient(145deg, rgba(19, 127, 236, 0.1) 0%, rgba(16, 25, 34, 0) 100%);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-800 dark:text-slate-100 h-screen flex flex-col font-display">
+<!-- Top Header / Mode Switcher -->
+<header class="h-20 border-b border-primary/20 flex items-center justify-between px-8 bg-background-light dark:bg-background-dark z-10">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/30">
+<span class="material-icons text-white text-3xl">groups</span>
+</div>
+<div>
+<h1 class="text-2xl font-bold tracking-tight">PE BOARD <span class="text-primary font-black">PRO</span></h1>
+<p class="text-xs uppercase tracking-widest text-primary/60 font-semibold">Team Generator</p>
+</div>
+</div>
+<div class="flex bg-primary/10 p-1.5 rounded-xl border border-primary/20">
+<button class="px-8 py-2.5 rounded-lg bg-primary text-white font-semibold flex items-center gap-2 shadow-lg shadow-primary/20">
+<span class="material-icons text-sm">list</span> Standard List
+            </button>
+<button class="px-8 py-2.5 rounded-lg text-slate-400 hover:text-primary transition-colors font-semibold flex items-center gap-2">
+<span class="material-icons text-sm">stars</span> Number Draw
+            </button>
+</div>
+<div class="flex items-center gap-4">
+<div class="text-right">
+<div class="text-sm font-bold">Class 10-B</div>
+<div class="text-xs text-primary font-medium italic">Gymnasium East</div>
+</div>
+<span class="material-icons text-3xl text-primary/40">settings</span>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 flex overflow-hidden">
+<!-- Left Panel: Controls (35%) -->
+<aside class="w-[35%] border-r border-primary/10 p-8 flex flex-col gap-8 bg-white/5">
+<!-- Student Count Stepper -->
+<div class="space-y-4">
+<label class="text-sm font-bold uppercase tracking-widest text-primary/70">Student Count (N)</label>
+<div class="flex items-center justify-between bg-background-dark/50 p-4 rounded-2xl border border-primary/10">
+<button class="w-20 h-20 rounded-xl bg-primary/20 hover:bg-primary/30 text-primary flex items-center justify-center transition-all active:scale-95">
+<span class="material-icons text-4xl">remove</span>
+</button>
+<div class="text-7xl font-black text-white tabular-nums">24</div>
+<button class="w-20 h-20 rounded-xl bg-primary hover:bg-primary/80 text-white flex items-center justify-center transition-all shadow-xl shadow-primary/20 active:scale-95">
+<span class="material-icons text-4xl">add</span>
+</button>
+</div>
+</div>
+<!-- Team Count Stepper -->
+<div class="space-y-4">
+<label class="text-sm font-bold uppercase tracking-widest text-primary/70">Team Count (2-6)</label>
+<div class="flex items-center justify-between bg-background-dark/50 p-4 rounded-2xl border border-primary/10">
+<button class="w-20 h-20 rounded-xl bg-primary/20 hover:bg-primary/30 text-primary flex items-center justify-center transition-all active:scale-95">
+<span class="material-icons text-4xl">remove</span>
+</button>
+<div class="text-7xl font-black text-white tabular-nums">4</div>
+<button class="w-20 h-20 rounded-xl bg-primary hover:bg-primary/80 text-white flex items-center justify-center transition-all shadow-xl shadow-primary/20 active:scale-95">
+<span class="material-icons text-4xl">add</span>
+</button>
+</div>
+</div>
+<!-- Toggles -->
+<div class="grid grid-cols-2 gap-4">
+<button class="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-primary/20 border-2 border-primary text-primary transition-all">
+<span class="material-icons text-3xl">wc</span>
+<span class="font-bold text-sm">BALANCE GENDER</span>
+<div class="w-12 h-6 bg-primary rounded-full relative">
+<div class="absolute right-1 top-1 w-4 h-4 bg-white rounded-full"></div>
+</div>
+</button>
+<button class="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl bg-white/5 border-2 border-transparent text-slate-400 hover:border-primary/30 transition-all">
+<span class="material-icons text-3xl">bolt</span>
+<span class="font-bold text-sm">BALANCE LEVEL</span>
+<div class="w-12 h-6 bg-slate-700 rounded-full relative">
+<div class="absolute left-1 top-1 w-4 h-4 bg-slate-400 rounded-full"></div>
+</div>
+</button>
+</div>
+<div class="mt-auto">
+<button class="w-full py-8 bg-primary hover:bg-primary/90 text-white rounded-2xl shadow-2xl shadow-primary/40 transition-all active:scale-95 flex items-center justify-center gap-4">
+<span class="material-icons text-4xl">shuffle</span>
+<span class="text-4xl font-black tracking-tighter uppercase">Shuffle Teams</span>
+</button>
+</div>
+</aside>
+<!-- Right Panel: Results (65%) -->
+<section class="flex-1 p-8 flex flex-col gap-6 relative overflow-hidden">
+<!-- Number Draw / Animated Reveal Area (Hidden in List Mode but visible for UI demonstration) -->
+<div class="hidden border-2 border-dashed border-primary/30 rounded-3xl p-8 flex flex-col items-center justify-center bg-primary/5 min-h-[200px] mb-4">
+<div class="text-primary text-sm font-bold uppercase tracking-[0.3em] mb-4">Random Selection In Progress</div>
+<div class="flex gap-4">
+<div class="w-24 h-32 bg-background-dark border-4 border-primary rounded-xl flex items-center justify-center text-6xl font-black text-white">?</div>
+<div class="w-24 h-32 bg-background-dark border-4 border-primary rounded-xl flex items-center justify-center text-6xl font-black text-white">?</div>
+</div>
+</div>
+<!-- Team Grid -->
+<div class="grid grid-cols-2 gap-6 flex-1 overflow-y-auto custom-scrollbar pr-4">
+<!-- Team Card 1 -->
+<div class="team-card-gradient border border-primary/20 rounded-3xl p-6 flex flex-col shadow-xl">
+<div class="flex justify-between items-center mb-6">
+<div class="flex items-center gap-3">
+<span class="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-white font-bold">1</span>
+<h3 class="text-2xl font-black tracking-tight">TEAM ALPHA</h3>
+</div>
+<span class="px-3 py-1 bg-primary/10 rounded-full text-xs font-bold text-primary tracking-widest uppercase">6 Players</span>
+</div>
+<div class="space-y-2 flex-1">
+<div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:border-primary/20 transition-all group">
+<span class="text-xl font-medium">Marcus Johnson</span>
+<button class="text-slate-500 hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+<span class="material-icons">push_pin</span>
+</button>
+</div>
+<div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:border-primary/20 transition-all group">
+<span class="text-xl font-medium">Sarah Miller</span>
+<button class="text-slate-500 hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+<span class="material-icons">push_pin</span>
+</button>
+</div>
+<div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:border-primary/20 transition-all group">
+<span class="text-xl font-medium">David Chen</span>
+<button class="text-slate-500 hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+<span class="material-icons">push_pin</span>
+</button>
+</div>
+<div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5 hover:border-primary/20 transition-all group">
+<span class="text-xl font-medium">Elena Rodriguez</span>
+<button class="text-slate-500 hover:text-primary transition-colors opacity-0 group-hover:opacity-100">
+<span class="material-icons text-primary">push_pin</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Team Card 2 -->
+<div class="team-card-gradient border border-primary/20 rounded-3xl p-6 flex flex-col shadow-xl">
+<div class="flex justify-between items-center mb-6">
+<div class="flex items-center gap-3">
+<span class="w-10 h-10 bg-primary/20 rounded-lg flex items-center justify-center text-primary font-bold">2</span>
+<h3 class="text-2xl font-black tracking-tight text-slate-300">TEAM BRAVO</h3>
+</div>
+<span class="px-3 py-1 bg-white/5 rounded-full text-xs font-bold text-slate-400 tracking-widest uppercase">6 Players</span>
+</div>
+<div class="space-y-2 flex-1">
+<div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+<span class="text-xl font-medium">Chris Taylor</span>
+<button class="text-slate-500"><span class="material-icons">push_pin</span></button>
+</div>
+<div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+<span class="text-xl font-medium">Aisha Khan</span>
+<button class="text-slate-500"><span class="material-icons">push_pin</span></button>
+</div>
+<div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+<span class="text-xl font-medium">Lucas Schmidt</span>
+<button class="text-slate-500"><span class="material-icons">push_pin</span></button>
+</div>
+</div>
+</div>
+<!-- Team Card 3 -->
+<div class="team-card-gradient border border-primary/20 rounded-3xl p-6 flex flex-col shadow-xl">
+<div class="flex justify-between items-center mb-6">
+<div class="flex items-center gap-3">
+<span class="w-10 h-10 bg-primary/20 rounded-lg flex items-center justify-center text-primary font-bold">3</span>
+<h3 class="text-2xl font-black tracking-tight text-slate-300">TEAM CHARLIE</h3>
+</div>
+<span class="px-3 py-1 bg-white/5 rounded-full text-xs font-bold text-slate-400 tracking-widest uppercase">6 Players</span>
+</div>
+<div class="space-y-2 flex-1">
+<div class="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5">
+<span class="text-xl font-medium">Jordan Wu</span>
+<button class="text-slate-500"><span class="material-icons">push_pin</span></button>
+</div>
+</div>
+</div>
+<!-- Team Card 4 -->
+<div class="team-card-gradient border border-primary/20 rounded-3xl p-6 flex flex-col shadow-xl">
+<div class="flex justify-between items-center mb-6">
+<div class="flex items-center gap-3">
+<span class="w-10 h-10 bg-primary/20 rounded-lg flex items-center justify-center text-primary font-bold">4</span>
+<h3 class="text-2xl font-black tracking-tight text-slate-300">TEAM DELTA</h3>
+</div>
+<span class="px-3 py-1 bg-white/5 rounded-full text-xs font-bold text-slate-400 tracking-widest uppercase">6 Players</span>
+</div>
+<div class="flex flex-col items-center justify-center flex-1 text-slate-500 italic py-10">
+<span class="material-icons text-4xl mb-2 opacity-20">hourglass_empty</span>
+<p>Waiting for shuffle...</p>
+</div>
+</div>
+</div>
+<!-- Action FABs -->
+<div class="absolute bottom-12 right-12 flex flex-col gap-4">
+<button class="w-20 h-20 bg-background-dark border-4 border-primary rounded-full shadow-2xl flex items-center justify-center text-primary hover:bg-primary hover:text-white transition-all transform hover:scale-110 active:scale-95">
+<span class="material-icons text-4xl">refresh</span>
+</button>
+<button class="w-20 h-20 bg-primary/20 border-4 border-primary/30 rounded-full shadow-2xl flex items-center justify-center text-primary hover:bg-primary/30 transition-all transform hover:scale-110 active:scale-95">
+<span class="material-icons text-4xl">save</span>
+</button>
+</div>
+</section>
+</main>
+<!-- Persistent Bottom Navigation -->
+<nav class="h-24 bg-background-dark border-t border-primary/20 flex items-center justify-center px-10 gap-16 relative">
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-icons text-3xl text-slate-500 group-hover:text-primary transition-colors">dashboard</span>
+<span class="text-[10px] font-bold tracking-widest text-slate-500 group-hover:text-primary uppercase">Dashboard</span>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-icons text-3xl text-slate-500 group-hover:text-primary transition-colors">person_search</span>
+<span class="text-[10px] font-bold tracking-widest text-slate-500 group-hover:text-primary uppercase">Roster</span>
+</button>
+<!-- Active Nav State -->
+<div class="relative flex flex-col items-center gap-1">
+<div class="absolute -top-12 w-20 h-20 bg-primary rounded-full flex items-center justify-center shadow-xl shadow-primary/40 border-8 border-background-dark">
+<span class="material-icons text-4xl text-white">group_add</span>
+</div>
+<span class="mt-8 text-[10px] font-bold tracking-widest text-primary uppercase">Generator</span>
+</div>
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-icons text-3xl text-slate-500 group-hover:text-primary transition-colors">timer</span>
+<span class="text-[10px] font-bold tracking-widest text-slate-500 group-hover:text-primary uppercase">Timers</span>
+</button>
+<button class="flex flex-col items-center gap-1 group">
+<span class="material-icons text-3xl text-slate-500 group-hover:text-primary transition-colors">analytics</span>
+<span class="text-[10px] font-bold tracking-widest text-slate-500 group-hover:text-primary uppercase">Stats</span>
+</button>
+<!-- Current Time / Battery (Gym Context) -->
+<div class="absolute right-10 flex items-center gap-6">
+<div class="flex items-center gap-2 text-slate-500">
+<span class="material-icons text-xl">battery_full</span>
+<span class="font-bold">98%</span>
+</div>
+<div class="text-3xl font-black text-primary tabular-nums tracking-tight">10:42 AM</div>
+</div>
+</nav>
+</body></html>

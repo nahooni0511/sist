@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#0a0f14",
+                    },
+                    fontFamily: {
+                        "display": ["Lexend"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.5rem",
+                        "lg": "1rem",
+                        "xl": "1.5rem",
+                        "2xl": "2rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<title>PE Board Dashboard</title>
+<style type="text/tailwindcss">
+        @layer base {
+            body {
+                @apply overscroll-none select-none;
+            }
+        }
+        .text-tile-label { font-size: 56px; line-height: 1.1; }
+        .icon-tile-size { font-size: 120px !important; }
+        .text-nav-large { font-size: 36px; }
+        .grid-tile { transition: transform 0.1s ease, background-color 0.2s ease; }
+        .grid-tile:active { transform: scale(0.97); }
+    </style>
+</head>
+<body class="bg-background-dark font-display text-white h-screen w-screen overflow-hidden flex flex-col">
+<header class="h-32 bg-background-dark/95 border-b-2 border-white/10 px-12 flex items-center justify-between z-50">
+<div class="flex items-center gap-12">
+<div class="flex items-center gap-4">
+<div class="w-16 h-16 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
+<span class="material-icons text-5xl">sports_volleyball</span>
+</div>
+<span class="text-4xl font-extrabold tracking-tight">PE<span class="text-primary">BOARD</span></span>
+</div>
+<div class="flex items-center gap-6 bg-white/5 px-8 py-4 rounded-2xl border border-white/10">
+<span class="material-icons text-primary text-4xl">volume_up</span>
+<div class="w-64 h-4 bg-white/10 rounded-full overflow-hidden">
+<div class="w-3/4 h-full bg-primary shadow-[0_0_15px_rgba(19,127,236,0.5)]"></div>
+</div>
+<span class="text-3xl font-bold w-16 text-right">75%</span>
+</div>
+</div>
+<div class="flex flex-col items-center">
+<div class="text-7xl font-black tracking-[0.2em] tabular-nums text-primary drop-shadow-sm">
+            10:45<span class="animate-pulse">:</span>24
+        </div>
+<div class="text-xl font-medium opacity-50 uppercase tracking-widest mt-1">Monday, Oct 24</div>
+</div>
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-4 bg-white/5 px-6 py-4 rounded-2xl border border-white/10">
+<span class="text-2xl font-bold opacity-80 uppercase tracking-wider">Awake</span>
+<div class="w-20 h-10 bg-primary rounded-full relative flex items-center px-1 shadow-inner">
+<div class="w-8 h-8 bg-white rounded-full translate-x-10 shadow-md"></div>
+</div>
+</div>
+<button class="bg-red-600 hover:bg-red-500 active:bg-red-700 h-20 px-10 rounded-2xl flex items-center gap-4 font-black text-3xl uppercase tracking-wider shadow-2xl shadow-red-900/40 border-b-4 border-red-800 transition-all">
+<span class="material-icons text-4xl">emergency</span>
+            STOP
+        </button>
+<button class="w-20 h-20 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10">
+<span class="material-icons text-5xl">settings</span>
+</button>
+</div>
+</header>
+<main class="flex-1 overflow-hidden p-12 flex flex-col gap-12">
+<div class="grid grid-cols-6 grid-rows-2 gap-8 flex-1">
+<button class="grid-tile col-span-3 flex flex-col items-center justify-center bg-primary rounded-3xl p-10 gap-6 shadow-2xl shadow-primary/30 border-b-8 border-blue-800">
+<span class="material-icons icon-tile-size">timer</span>
+<span class="text-tile-label font-black uppercase tracking-tight">Timer</span>
+</button>
+<button class="grid-tile col-span-3 flex flex-col items-center justify-center bg-white/5 border-4 border-primary/40 rounded-3xl p-10 gap-6 hover:bg-primary/10 border-b-8 border-transparent">
+<span class="material-icons icon-tile-size text-primary">groups</span>
+<span class="text-tile-label font-black uppercase tracking-tight">Teams</span>
+</button>
+<button class="grid-tile col-span-2 flex flex-col items-center justify-center bg-white/5 border-4 border-primary/40 rounded-3xl p-10 gap-6 hover:bg-primary/10 border-b-8 border-transparent">
+<span class="material-icons icon-tile-size text-primary">scoreboard</span>
+<span class="text-tile-label font-black uppercase tracking-tight">Score</span>
+</button>
+<button class="grid-tile col-span-2 flex flex-col items-center justify-center bg-white/5 border-4 border-primary/40 rounded-3xl p-10 gap-6 hover:bg-primary/10 border-b-8 border-transparent">
+<span class="material-icons icon-tile-size text-primary">campaign</span>
+<span class="text-tile-label font-black uppercase tracking-tight">Sounds</span>
+</button>
+<button class="grid-tile col-span-2 flex flex-col items-center justify-center bg-white/5 border-4 border-primary/40 rounded-3xl p-10 gap-6 hover:bg-primary/10 border-b-8 border-transparent">
+<span class="material-icons icon-tile-size text-primary">assignment</span>
+<span class="text-tile-label font-black uppercase tracking-tight">Templates</span>
+</button>
+</div>
+<div class="flex flex-col gap-6">
+<div class="flex items-center justify-between px-4">
+<h2 class="text-4xl font-black text-white/40 uppercase tracking-[0.3em] flex items-center gap-4">
+<span class="material-icons text-4xl">history</span> Recent Presets
+            </h2>
+<div class="h-1 flex-1 mx-12 bg-white/5 rounded-full"></div>
+</div>
+<div class="grid grid-cols-3 gap-8 h-56">
+<div class="bg-blue-600/10 rounded-2xl border-4 border-blue-500/30 p-8 flex items-center gap-8 group hover:bg-blue-600/20 transition-all cursor-pointer shadow-lg">
+<div class="w-36 h-36 rounded-2xl bg-blue-500 flex items-center justify-center shadow-lg">
+<span class="material-icons text-7xl text-white">fitness_center</span>
+</div>
+<div class="flex-1">
+<h3 class="text-4xl font-extrabold mb-2">30s Circuit</h3>
+<p class="text-2xl font-medium text-blue-400">12 Stations • 10s Rest</p>
+</div>
+<span class="material-icons text-6xl text-blue-500/50 group-hover:text-blue-400 transition-colors">play_circle</span>
+</div>
+<div class="bg-emerald-600/10 rounded-2xl border-4 border-emerald-500/30 p-8 flex items-center gap-8 group hover:bg-emerald-600/20 transition-all cursor-pointer shadow-lg">
+<div class="w-36 h-36 rounded-2xl bg-emerald-500 flex items-center justify-center shadow-lg">
+<span class="material-icons text-7xl text-white">sports_soccer</span>
+</div>
+<div class="flex-1">
+<h3 class="text-4xl font-extrabold mb-2">5-a-side</h3>
+<p class="text-2xl font-medium text-emerald-400">4 Teams • Round Robin</p>
+</div>
+<span class="material-icons text-6xl text-emerald-500/50 group-hover:text-emerald-400 transition-colors">play_circle</span>
+</div>
+<div class="bg-orange-600/10 rounded-2xl border-4 border-orange-500/30 p-8 flex items-center gap-8 group hover:bg-orange-600/20 transition-all cursor-pointer shadow-lg">
+<div class="w-36 h-36 rounded-2xl bg-orange-500 flex items-center justify-center shadow-lg">
+<span class="material-icons text-7xl text-white">wb_sunny</span>
+</div>
+<div class="flex-1">
+<h3 class="text-4xl font-extrabold mb-2">Warm-up</h3>
+<p class="text-2xl font-medium text-orange-400">Cardio + Dynamic</p>
+</div>
+<span class="material-icons text-6xl text-orange-500/50 group-hover:text-orange-400 transition-colors">play_circle</span>
+</div>
+</div>
+</div>
+</main>
+<nav class="h-36 bg-background-dark border-t-4 border-white/5 flex items-stretch px-6 gap-6 pb-4">
+<button class="flex-1 flex flex-col items-center justify-center gap-2 bg-primary/20 text-primary border-t-8 border-primary rounded-b-3xl">
+<span class="material-icons text-6xl">home</span>
+<span class="text-nav-large font-black uppercase">Home</span>
+</button>
+<button class="flex-1 flex flex-col items-center justify-center gap-2 text-white/40 hover:text-white hover:bg-white/5 transition-all">
+<span class="material-icons text-6xl">timer</span>
+<span class="text-nav-large font-black uppercase">Timer</span>
+</button>
+<button class="flex-1 flex flex-col items-center justify-center gap-2 text-white/40 hover:text-white hover:bg-white/5 transition-all">
+<span class="material-icons text-6xl">groups</span>
+<span class="text-nav-large font-black uppercase">Teams</span>
+</button>
+<button class="flex-1 flex flex-col items-center justify-center gap-2 text-white/40 hover:text-white hover:bg-white/5 transition-all">
+<span class="material-icons text-6xl">sports_score</span>
+<span class="text-nav-large font-black uppercase">Scores</span>
+</button>
+<button class="flex-1 flex flex-col items-center justify-center gap-2 text-white/40 hover:text-white hover:bg-white/5 transition-all">
+<span class="material-icons text-6xl">volume_up</span>
+<span class="text-nav-large font-black uppercase">Sounds</span>
+</button>
+</nav>
+<div class="fixed bottom-36 left-0 right-0 h-1.5 bg-gradient-to-r from-transparent via-primary/50 to-transparent"></div>
+
+</body></html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PE Board - High-Visibility Circuit Timer</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&amp;family=Material+Icons&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#0a0f14",
+                    },
+                    fontFamily: {
+                        "display": ["Lexend"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style type="text/tailwindcss">
+        body {
+            font-family: 'Lexend', sans-serif;
+            overflow: hidden;
+        }
+        .timer-text {
+            font-size: 260px;
+            line-height: 1;
+            letter-spacing: -0.02em;
+        }
+        .text-glow-work {
+            text-shadow: 0 0 60px rgba(34, 197, 94, 0.4);
+        }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .status-banner-work {
+            background-color: #22c55e;
+            color: #ffffff;
+            box-shadow: 0 10px 40px -10px rgba(34, 197, 94, 0.5);
+        }
+        .status-banner-rest {
+            background-color: #ef4444;
+            color: #ffffff;
+            box-shadow: 0 10px 40px -10px rgba(239, 68, 68, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 h-screen w-screen flex flex-col font-display">
+<div class="status-banner-work w-full h-24 flex items-center justify-center relative z-50">
+<div class="flex items-center gap-6">
+<span class="material-symbols-outlined text-5xl">fitness_center</span>
+<span class="text-6xl font-black uppercase tracking-[0.3em]">WORK</span>
+<span class="material-symbols-outlined text-5xl">fitness_center</span>
+</div>
+</div>
+<nav class="h-16 px-8 flex items-center justify-between border-b border-white/5 bg-background-dark/50 backdrop-blur-md">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 bg-primary rounded flex items-center justify-center">
+<span class="material-icons text-white text-sm">timer</span>
+</div>
+<h1 class="text-lg font-bold tracking-tight">PE BOARD</h1>
+</div>
+<div class="flex items-center gap-8">
+<div class="flex items-center gap-4 bg-white/5 px-4 py-1.5 rounded-lg border border-white/10">
+<div class="flex items-center gap-2">
+<span class="material-icons text-primary text-sm uppercase">sync</span>
+<span class="text-sm font-bold">ROUND 2 / 10</span>
+</div>
+<div class="w-px h-4 bg-white/20"></div>
+<div class="flex items-center gap-2">
+<span class="material-icons text-primary text-sm uppercase">schedule</span>
+<span class="text-sm font-bold">ELAPSED: 05:40</span>
+</div>
+</div>
+<button class="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-black text-xs flex items-center gap-2 transition-all active:scale-95 uppercase tracking-widest">
+<span class="material-icons text-sm">gavel</span>
+            EMERGENCY STOP
+        </button>
+</div>
+</nav>
+<main class="flex-1 flex overflow-hidden">
+<div class="flex-1 flex flex-col items-center justify-between p-12 py-16 relative">
+<div class="w-full"></div>
+<div class="flex items-center justify-center">
+<div class="relative">
+<span class="timer-text font-black text-white tabular-nums text-glow-work">00:45</span>
+</div>
+</div>
+<div class="flex gap-6 items-center">
+<button class="h-24 px-10 bg-slate-800 hover:bg-slate-700 transition-colors rounded-3xl text-3xl font-black border-b-4 border-slate-900">30s</button>
+<button class="h-24 px-10 bg-primary rounded-3xl text-3xl font-black ring-8 ring-primary/20 border-b-4 border-blue-700">45s</button>
+<button class="h-24 px-10 bg-slate-800 hover:bg-slate-700 transition-colors rounded-3xl text-3xl font-black border-b-4 border-slate-900">60s</button>
+<button class="h-24 px-10 bg-slate-800 hover:bg-slate-700 transition-colors rounded-3xl text-3xl font-black border-b-4 border-slate-900">90s</button>
+<button class="h-24 px-10 bg-slate-800 hover:bg-slate-700 transition-colors rounded-3xl text-3xl font-black border-b-4 border-slate-900">120s</button>
+<button class="h-24 w-24 bg-slate-800 hover:bg-slate-700 transition-colors rounded-3xl text-3xl font-black flex items-center justify-center border-b-4 border-slate-900">
+<span class="material-icons text-4xl">edit</span>
+</button>
+</div>
+</div>
+<aside class="w-[420px] border-l border-white/5 bg-background-dark/80 p-10 flex flex-col gap-10">
+<h2 class="text-2xl font-black flex items-center gap-3 border-b border-white/10 pb-6 uppercase tracking-tight">
+<span class="material-symbols-outlined text-primary text-3xl">tune</span>
+            Config
+        </h2>
+<div class="space-y-12">
+<div class="space-y-6">
+<div class="flex items-center justify-between">
+<label class="text-lg font-black text-slate-400 uppercase tracking-widest">Total Rounds</label>
+<span class="text-sm font-bold bg-primary/20 text-primary px-3 py-1 rounded">Rounds</span>
+</div>
+<div class="flex items-center justify-between bg-white/5 p-3 rounded-[2rem] border border-white/10">
+<button class="w-20 h-20 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 active:scale-90 transition-all border-b-4 border-slate-900">
+<span class="material-icons text-4xl font-black text-white">remove</span>
+</button>
+<span class="text-7xl font-black tabular-nums">10</span>
+<button class="w-20 h-20 flex items-center justify-center bg-primary rounded-full hover:bg-primary/80 active:scale-90 transition-all border-b-4 border-blue-700 shadow-lg shadow-primary/20">
+<span class="material-icons text-4xl font-black text-white">add</span>
+</button>
+</div>
+</div>
+<div class="space-y-6">
+<div class="flex items-center justify-between">
+<label class="text-lg font-black text-slate-400 uppercase tracking-widest">Rest Duration</label>
+<span class="text-sm font-bold bg-red-500/20 text-red-400 px-3 py-1 rounded">Seconds</span>
+</div>
+<div class="flex items-center justify-between bg-white/5 p-3 rounded-[2rem] border border-white/10">
+<button class="w-20 h-20 flex items-center justify-center bg-slate-800 rounded-full hover:bg-slate-700 active:scale-90 transition-all border-b-4 border-slate-900">
+<span class="material-icons text-4xl font-black text-white">remove</span>
+</button>
+<div class="text-center">
+<span class="text-7xl font-black tabular-nums">15</span>
+</div>
+<button class="w-20 h-20 flex items-center justify-center bg-primary rounded-full hover:bg-primary/80 active:scale-90 transition-all border-b-4 border-blue-700 shadow-lg shadow-primary/20">
+<span class="material-icons text-4xl font-black text-white">add</span>
+</button>
+</div>
+</div>
+</div>
+<div class="mt-auto space-y-6">
+<div class="bg-primary/10 border-l-4 border-primary rounded-xl p-6">
+<p class="text-sm font-black text-primary uppercase mb-3">UP NEXT</p>
+<div class="flex items-center gap-5">
+<div class="w-16 h-16 rounded-xl overflow-hidden bg-slate-800 ring-2 ring-white/10">
+<img alt="Station Exercise" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD14ylHKvuOI8RgSd-tkO_QnDymuisNe1RpdoFckufqLtEkIPX4rcQOUOMOZYyDfu0Lwz9vpNvKuuNLEav4uM2_QCpLGEM5-I3ATszAbfj3fzX1-r09NBi21KL-ey_lXbFpFQJJX1yRWFSb-P8EY8w8nKrm5OEuH3h2BLuyxqUZTt72w3cZBMh6KIbDZ74_tnnju7JCSYLZExV1SVAW78PEOrSrS87lT-0qb0MmA_yBaist_L8K1UhPi13x9wHFnKWdqYJIJAbSJiAY"/>
+</div>
+<div>
+<p class="text-2xl font-black leading-tight">Jumping Ropes</p>
+<p class="text-sm font-bold text-slate-400 uppercase tracking-wide">Station 3 of 10</p>
+</div>
+</div>
+</div>
+</div>
+</aside>
+</main>
+<footer class="h-44 bg-slate-900 border-t border-white/10 px-16 flex items-center justify-center gap-[120px]">
+<button class="h-28 w-44 bg-slate-800 hover:bg-slate-700 rounded-[2rem] flex items-center justify-center transition-all active:scale-95 group border-b-4 border-slate-950">
+<div class="flex flex-col items-center">
+<span class="material-icons text-5xl text-slate-300 group-hover:text-white">skip_previous</span>
+<span class="text-xs font-black uppercase tracking-widest mt-1 text-slate-400">PREVIOUS</span>
+</div>
+</button>
+<div class="w-[500px]">
+<button class="w-full h-32 bg-green-500 hover:bg-green-600 text-white rounded-[2.5rem] flex items-center justify-center gap-6 shadow-[0_20px_50px_rgba(34,197,94,0.3)] transition-all active:scale-[0.97] border-b-8 border-green-700">
+<span class="material-icons text-7xl">play_arrow</span>
+<span class="text-5xl font-black uppercase tracking-[0.2em]">START</span>
+</button>
+</div>
+<button class="h-28 w-44 bg-slate-800 hover:bg-slate-700 rounded-[2rem] flex items-center justify-center transition-all active:scale-95 group border-b-4 border-slate-950">
+<div class="flex flex-col items-center">
+<span class="material-icons text-5xl text-slate-300 group-hover:text-white">skip_next</span>
+<span class="text-xs font-black uppercase tracking-widest mt-1 text-slate-400">NEXT</span>
+</div>
+</button>
+</footer>
+
+</body></html>

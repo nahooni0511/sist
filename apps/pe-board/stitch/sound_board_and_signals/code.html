@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PE Board - Sound Board &amp; Signals</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#137fec",
+                        "background-light": "#f6f7f8",
+                        "background-dark": "#101922",
+                    },
+                    fontFamily: {
+                        "display": ["Lexend"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Lexend', sans-serif; }
+        .sound-pad-active:active {
+            transform: scale(0.98);
+            background-color: #137fec !important;
+            box-shadow: 0 0 40px rgba(19, 127, 236, 0.4);
+        }
+        .slider-thumb::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 32px;
+            height: 32px;
+            background: #137fec;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 4px solid #101922;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 h-screen overflow-hidden flex flex-col select-none">
+<!-- Top Emergency Bar -->
+<header class="h-20 bg-white dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 z-50">
+<div class="flex items-center gap-4">
+<div class="bg-primary/20 p-2 rounded-lg">
+<span class="material-icons text-primary text-3xl">volume_up</span>
+</div>
+<div>
+<h1 class="text-2xl font-bold tracking-tight">Sound Board <span class="text-primary">&amp; Signals</span></h1>
+<p class="text-xs text-slate-500 font-medium uppercase tracking-widest">Gymnasium Mode • 32" Display</p>
+</div>
+</div>
+<button class="bg-red-600 hover:bg-red-700 text-white flex items-center gap-3 px-8 py-3 rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-red-600/20">
+<span class="material-icons text-3xl">emergency</span>
+<span class="text-xl uppercase tracking-tighter">Emergency Stop / Reset</span>
+</button>
+</header>
+<main class="flex-1 flex overflow-hidden p-6 gap-6">
+<!-- Main Sound Grid (75% width) -->
+<div class="flex-[3] grid grid-cols-3 grid-rows-2 gap-6">
+<!-- Whistle -->
+<button class="sound-pad-active group bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center gap-4 transition-all">
+<span class="material-icons text-7xl text-primary group-active:text-white">sports</span>
+<span class="text-3xl font-bold group-active:text-white">Whistle</span>
+<span class="text-slate-400 text-sm font-medium uppercase tracking-widest group-active:text-white/70">Hold to Repeat</span>
+</button>
+<!-- Short Bell -->
+<button class="sound-pad-active group bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center gap-4 transition-all">
+<span class="material-icons text-7xl text-primary group-active:text-white">notifications</span>
+<span class="text-3xl font-bold group-active:text-white">Short Bell</span>
+<span class="text-slate-400 text-sm font-medium uppercase tracking-widest group-active:text-white/70">Hold to Repeat</span>
+</button>
+<!-- Long Bell -->
+<button class="sound-pad-active group bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center gap-4 transition-all">
+<span class="material-icons text-7xl text-primary group-active:text-white">notifications_active</span>
+<span class="text-3xl font-bold group-active:text-white">Long Bell</span>
+<span class="text-slate-400 text-sm font-medium uppercase tracking-widest group-active:text-white/70">Hold to Repeat</span>
+</button>
+<!-- Start Signal -->
+<button class="sound-pad-active group bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center gap-4 transition-all">
+<span class="material-icons text-7xl text-green-500 group-active:text-white">play_circle_filled</span>
+<span class="text-3xl font-bold group-active:text-white">Start Signal</span>
+<span class="text-slate-400 text-sm font-medium uppercase tracking-widest group-active:text-white/70">Tap to Trigger</span>
+</button>
+<!-- Stop Signal -->
+<button class="sound-pad-active group bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center gap-4 transition-all">
+<span class="material-icons text-7xl text-red-500 group-active:text-white">stop_circle</span>
+<span class="text-3xl font-bold group-active:text-white">Stop Signal</span>
+<span class="text-slate-400 text-sm font-medium uppercase tracking-widest group-active:text-white/70">Tap to Trigger</span>
+</button>
+<!-- Clap -->
+<button class="sound-pad-active group bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-xl flex flex-col items-center justify-center gap-4 transition-all">
+<span class="material-icons text-7xl text-amber-500 group-active:text-white">front_hand</span>
+<span class="text-3xl font-bold group-active:text-white">Clap</span>
+<span class="text-slate-400 text-sm font-medium uppercase tracking-widest group-active:text-white/70">Hold to Repeat</span>
+</button>
+</div>
+<!-- Right Side Controls (25% width) -->
+<aside class="flex-1 flex flex-col gap-6">
+<!-- Global Volume Card -->
+<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-8 flex flex-col gap-8 flex-1">
+<div class="flex justify-between items-center">
+<h3 class="text-xl font-bold uppercase tracking-wide text-slate-500">Audio Level</h3>
+<span class="text-3xl font-black text-primary">85%</span>
+</div>
+<div class="flex-1 flex flex-col justify-center gap-8">
+<input class="slider-thumb w-full h-4 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer" max="100" min="0" type="range" value="85"/>
+<button class="w-full bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-700 py-6 rounded-xl flex items-center justify-center gap-4 transition-colors">
+<span class="material-icons text-4xl">volume_off</span>
+<span class="text-2xl font-bold">Master Mute</span>
+</button>
+</div>
+</div>
+<!-- Voice Countdown Settings -->
+<div class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-8">
+<h3 class="text-xl font-bold uppercase tracking-wide text-slate-500 mb-6">Voice Countdown</h3>
+<div class="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-xl">
+<button class="flex-1 py-4 bg-primary text-white rounded-lg font-bold text-xl shadow-lg">3-2-1</button>
+<button class="flex-1 py-4 text-slate-500 font-bold text-xl">5-4-3-2-1</button>
+</div>
+</div>
+<!-- Test Button -->
+<button class="bg-primary hover:bg-primary/90 text-white p-8 rounded-xl flex items-center justify-center gap-4 transition-all active:scale-95 shadow-xl shadow-primary/20">
+<span class="material-icons text-4xl">record_voice_over</span>
+<span class="text-2xl font-bold uppercase tracking-widest">Test Sound</span>
+</button>
+</aside>
+</main>
+<!-- Bottom Navigation -->
+<nav class="h-24 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center justify-around px-12">
+<button class="flex flex-col items-center gap-1 text-slate-400 hover:text-primary transition-colors">
+<span class="material-icons text-3xl">dashboard</span>
+<span class="text-sm font-bold uppercase">Dashboard</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400 hover:text-primary transition-colors">
+<span class="material-icons text-3xl">timer</span>
+<span class="text-sm font-bold uppercase">Timers</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-primary transition-colors">
+<span class="material-icons text-4xl">volume_up</span>
+<span class="text-sm font-bold uppercase">Signals</span>
+<div class="w-1.5 h-1.5 bg-primary rounded-full mt-1"></div>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400 hover:text-primary transition-colors">
+<span class="material-icons text-3xl">groups</span>
+<span class="text-sm font-bold uppercase">Rosters</span>
+</button>
+<button class="flex flex-col items-center gap-1 text-slate-400 hover:text-primary transition-colors">
+<span class="material-icons text-3xl">settings</span>
+<span class="text-sm font-bold uppercase">System</span>
+</button>
+</nav>
+<!-- Visual Indicator for Touch Area (Debug UI) -->
+<div class="fixed bottom-28 right-8 pointer-events-none opacity-40 flex items-center gap-2">
+<div class="w-6 h-6 border-2 border-primary rounded-full animate-ping"></div>
+<span class="text-[10px] font-bold text-primary uppercase tracking-tighter">Touch Ready</span>
+</div>
+</body></html>

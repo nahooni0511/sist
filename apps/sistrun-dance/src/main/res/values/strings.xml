@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Sistrun Dance</string>
+    <string name="connect">연결</string>
+    <string name="disconnect">연결 해제</string>
+    <string name="status_idle">AI BOX 연결 대기</string>
+    <string name="ai_box_ip_hint">AI BOX IP (예: 192.168.0.20)</string>
+    <string name="hikvision_rtsp_hint">Hikvision RTSP URL (선택)</string>
+</resources>

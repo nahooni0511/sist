@@ -1,0 +1,10 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.SistrunManager" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#0D6EFD</item>
+        <item name="colorPrimaryVariant">#0A58CA</item>
+        <item name="colorSecondary">#20C997</item>
+        <item name="android:statusBarColor" tools:targetApi="l">#0A101A</item>
+        <item name="android:navigationBarColor">#0A101A</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

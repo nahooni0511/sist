@@ -1,0 +1,10 @@
+{
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "com.sistrun.core_dpc/com.sistrun.core_dpc.admin.CoreDeviceAdminReceiver",
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": "https://example.com/apk/core_dpc.apk",
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM": "BASE64_SHA256_OF_APK",
+  "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true,
+  "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": false,
+  "android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE": {
+    "bootstrap_server": "https://api.example.com"
+  }
+}

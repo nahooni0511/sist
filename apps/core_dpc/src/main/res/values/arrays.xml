@@ -1,0 +1,10 @@
+<resources>
+    <string-array name="core_dpc_manager_callers">
+        <item>com.sistrun.manager</item>
+    </string-array>
+
+    <string-array name="core_dpc_heartbeat_callers">
+        <item>com.sistrun.manager</item>
+        <item>com.sistrun.dance</item>
+    </string-array>
+</resources>

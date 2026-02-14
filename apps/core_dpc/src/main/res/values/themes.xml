@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.SistrunCoreDpc" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">#0B6BCB</item>
+        <item name="colorSecondary">#15B880</item>
+        <item name="android:navigationBarColor">#0B1220</item>
+        <item name="android:statusBarColor">#0B1220</item>
+    </style>
+</resources>

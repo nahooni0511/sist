@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Launcher App Drawer</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#13ec5b",
+                        "background-light": "#f6f8f6",
+                        "background-dark": "#102216",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            scrollbar-width: thin;
+            scrollbar-color: #13ec5b #102216;
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #102216;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #13ec5b;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen font-display">
+<!-- Status Bar (System UI) -->
+<header class="fixed top-0 left-0 right-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md px-6 py-4 flex items-center justify-between border-b border-primary/10">
+<div class="flex items-center gap-6">
+<button class="flex items-center gap-2 group transition-all duration-200 hover:text-primary">
+<span class="material-icons text-primary bg-primary/20 p-2 rounded-xl group-hover:bg-primary group-hover:text-background-dark">home</span>
+<span class="text-lg font-semibold tracking-tight">Home</span>
+</button>
+<div class="h-6 w-px bg-slate-700/30"></div>
+<h1 class="text-xl font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400">App Drawer</h1>
+</div>
+<div class="flex items-center gap-6 text-sm font-medium text-slate-500 dark:text-slate-400">
+<div class="flex items-center gap-2">
+<span class="material-icons text-xs">wifi</span>
+<span>Active</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-icons text-xs">battery_charging_full</span>
+<span>88%</span>
+</div>
+<div class="text-slate-900 dark:text-white font-bold text-lg">10:45 AM</div>
+</div>
+</header>
+<main class="pt-28 pb-32 px-6 max-w-7xl mx-auto">
+<!-- Search & Filter -->
+<div class="mb-10 flex flex-col md:flex-row gap-4 items-center">
+<div class="relative w-full md:max-w-xl">
+<span class="material-icons absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+<input class="w-full bg-slate-100 dark:bg-slate-900/50 border-2 border-transparent focus:border-primary/50 focus:ring-0 rounded-2xl py-4 pl-12 pr-6 text-lg transition-all outline-none" placeholder="Search applications..." type="text"/>
+</div>
+<div class="flex gap-2 w-full md:w-auto">
+<button class="bg-primary/10 text-primary px-4 py-4 rounded-2xl font-bold flex items-center gap-2 whitespace-nowrap">
+<span class="material-icons">sort_by_alpha</span>
+<span>A-Z</span>
+</button>
+<button class="bg-slate-100 dark:bg-slate-900/50 text-slate-400 px-4 py-4 rounded-2xl font-bold flex items-center gap-2">
+<span class="material-icons">filter_list</span>
+</button>
+</div>
+</div>
+<!-- App Grid -->
+<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-x-4 gap-y-10">
+<!-- App Item 1 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-primary/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-primary/40 group-active:scale-95 transition-all duration-200">
+<span class="material-icons text-4xl text-primary">fitness_center</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">Body Composition</span>
+</button>
+<!-- App Item 2 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-red-500/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-red-500/40 group-active:scale-95 transition-all duration-200">
+<span class="material-icons text-4xl text-red-500">favorite</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">Heart Rate</span>
+</button>
+<!-- App Item 3 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-blue-500/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-blue-500/40 group-active:scale-95 transition-all duration-200 relative">
+<span class="material-icons text-4xl text-blue-500">history</span>
+<span class="absolute -top-1 -right-1 w-5 h-5 bg-primary rounded-full border-4 border-background-dark"></span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">Workout History</span>
+</button>
+<!-- App Item 4 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-orange-500/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-orange-500/40 group-active:scale-95 transition-all duration-200">
+<span class="material-icons text-4xl text-orange-500">settings</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">Device Settings</span>
+</button>
+<!-- App Item 5 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-purple-500/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-purple-500/40 group-active:scale-95 transition-all duration-200">
+<span class="material-icons text-4xl text-purple-500">account_circle</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">User Profile</span>
+</button>
+<!-- App Item 6 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-primary rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-primary/40 group-active:scale-95 transition-all duration-200 shadow-lg shadow-primary/20">
+<span class="material-icons text-4xl text-background-dark">shopping_bag</span>
+</div>
+<span class="text-sm font-bold text-center leading-tight text-primary">App Store</span>
+</button>
+<!-- App Item 7 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-cyan-500/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-cyan-500/40 group-active:scale-95 transition-all duration-200">
+<span class="material-icons text-4xl text-cyan-500">insights</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">Performance</span>
+</button>
+<!-- App Item 8 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-yellow-500/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-yellow-500/40 group-active:scale-95 transition-all duration-200">
+<span class="material-icons text-4xl text-yellow-500">timer</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">Stopwatch</span>
+</button>
+<!-- App Item 9 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-pink-500/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-pink-500/40 group-active:scale-95 transition-all duration-200">
+<span class="material-icons text-4xl text-pink-500">leaderboard</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">Leaderboards</span>
+</button>
+<!-- App Item 10 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-emerald-500/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-emerald-500/40 group-active:scale-95 transition-all duration-200">
+<span class="material-icons text-4xl text-emerald-500">restaurant</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">Nutrition Log</span>
+</button>
+<!-- App Item 11 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-indigo-500/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-indigo-500/40 group-active:scale-95 transition-all duration-200">
+<span class="material-icons text-4xl text-indigo-500">system_update</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">OS Update</span>
+</button>
+<!-- App Item 12 -->
+<button class="flex flex-col items-center group">
+<div class="w-24 h-24 bg-rose-500/20 rounded-3xl flex items-center justify-center mb-3 ring-4 ring-transparent group-hover:ring-rose-500/40 group-active:scale-95 transition-all duration-200">
+<span class="material-icons text-4xl text-rose-500">help_outline</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">Support</span>
+</button>
+<!-- Placeholder for more apps -->
+<button class="flex flex-col items-center group opacity-40">
+<div class="w-24 h-24 border-2 border-dashed border-slate-500 rounded-3xl flex items-center justify-center mb-3">
+<span class="material-icons text-4xl">add</span>
+</div>
+<span class="text-sm font-semibold text-center leading-tight">Install New</span>
+</button>
+</div>
+</main>
+<!-- Bottom Navigation / Status Footer -->
+<footer class="fixed bottom-0 left-0 right-0 z-50 bg-background-light dark:bg-background-dark border-t border-primary/10 px-8 py-6">
+<div class="max-w-7xl mx-auto flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center overflow-hidden border-2 border-primary/30">
+<img class="w-full h-full object-cover" data-alt="User profile avatar portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCVX9GKAl_e4ogDmfhvJ6iDvO-tIHtS0HVF97XYEHu3v0dSwGLRPkO1nYQn59dcXKMHVhBhWNCRmkbmOpfJ-z8U095RMc2uexrJDwOGHCdtGbBYnwkKeYAp5uEefVVD47d8LTLXgMk1wtjowgIV1rWgJi6aZOyr2LFo60g-ZpC1eJseY-5Kp0Fy7VcB41CImnGX7RAFN_l_wpuls_lXMiBDzNVg-tLSTjvmmwpDWaemhhrYK_eHf5FDg0HJCxVtt6B6vVZz03jvbro"/>
+</div>
+<div>
+<p class="text-xs text-slate-500 uppercase font-bold tracking-widest">Logged in as</p>
+<p class="text-sm font-bold">Alex Johnson</p>
+</div>
+</div>
+<div class="flex items-center gap-2 text-slate-500">
+<span class="material-icons text-sm">sync</span>
+<span class="text-xs font-medium uppercase tracking-tighter">Last synced: 2 mins ago</span>
+</div>
+<div class="flex gap-2">
+<button class="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900/50 hover:bg-primary/20 transition-colors">
+<span class="material-icons">notifications_none</span>
+</button>
+<button class="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900/50 hover:bg-primary/20 transition-colors">
+<span class="material-icons">power_settings_new</span>
+</button>
+</div>
+</div>
+</footer>
+</body></html>

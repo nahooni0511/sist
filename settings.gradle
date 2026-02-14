@@ -1,0 +1,29 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "sistrun-hub"
+
+include(":launcher")
+project(":launcher").projectDir = file("apps/launcher")
+
+include(":sistrun-dance")
+project(":sistrun-dance").projectDir = file("apps/sistrun-dance")
+
+include(":manager")
+project(":manager").projectDir = file("apps/manager")
+
+include(":core_dpc")
+project(":core_dpc").projectDir = file("apps/core_dpc")
