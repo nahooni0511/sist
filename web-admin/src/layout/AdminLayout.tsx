@@ -2,7 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAppContext } from "../hooks/useAppContext";
 
 export default function AdminLayout() {
-  const { baseUrl, adminToken, setBaseUrl, setAdminToken } = useAppContext();
+  const { logout } = useAppContext();
 
   return (
     <div className="app-shell">
@@ -24,28 +24,9 @@ export default function AdminLayout() {
 
       <main className="content-area">
         <header className="topbar">
-          <div>
-            <p className="eyebrow">CONTROL PANEL</p>
-            <h2>공원 설치 단말 운영 콘솔</h2>
-          </div>
-          <div className="connection-inline">
-            <label>
-              API Base URL
-              <input
-                value={baseUrl}
-                onChange={(event) => setBaseUrl(event.target.value)}
-                placeholder="http://localhost:4000"
-              />
-            </label>
-            <label>
-              Admin Token
-              <input
-                value={adminToken}
-                onChange={(event) => setAdminToken(event.target.value)}
-                placeholder="x-admin-token"
-              />
-            </label>
-          </div>
+          <button type="button" className="danger-button" onClick={logout}>
+            로그아웃
+          </button>
         </header>
 
         <Outlet />

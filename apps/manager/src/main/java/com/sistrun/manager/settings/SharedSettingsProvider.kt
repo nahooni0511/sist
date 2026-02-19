@@ -64,7 +64,32 @@ class SharedSettingsProvider : ContentProvider() {
         selection: String?,
         selectionArgs: Array<out String>?
     ): Int {
-        throw UnsupportedOperationException("Update is not supported")
+        val context = requireNotNull(context)
+        val value = values?.getAsString(COLUMN_VALUE)?.trim()
+        if (value.isNullOrEmpty()) {
+            return 0
+        }
+
+        val updated = when (uriMatcher.match(uri)) {
+            MATCH_ONE -> {
+                val key = uri.lastPathSegment.orEmpty()
+                ManagerPrefs.updateSharedSetting(context, key, value)
+            }
+
+            MATCH_ALL -> {
+                val key = values.getAsString(COLUMN_KEY).orEmpty()
+                ManagerPrefs.updateSharedSetting(context, key, value)
+            }
+
+            else -> throw IllegalArgumentException("Unsupported URI: $uri")
+        }
+
+        if (!updated) {
+            return 0
+        }
+
+        context.contentResolver.notifyChange(uri, null)
+        return 1
     }
 
     companion object {

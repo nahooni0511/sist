@@ -21,6 +21,7 @@ interface AppScaffoldProps {
   darkMode: boolean;
   fullscreen: boolean;
   onTabPress: (tab: MainTab) => void;
+  onBackPress: () => void;
   onOpenSettings: () => void;
   children: React.ReactNode;
   contentContainerStyle?: ViewStyle;
@@ -42,6 +43,7 @@ export const AppScaffold = ({
   darkMode,
   fullscreen,
   onTabPress,
+  onBackPress,
   onOpenSettings,
   children,
   contentContainerStyle,
@@ -76,9 +78,17 @@ export const AppScaffold = ({
 
         <View style={styles.topRightWrap}>
           <Pressable
+            accessibilityLabel="뒤로가기"
+            onPress={onBackPress}
+            style={[styles.topIconButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
+          >
+            <MaterialIcons name="arrow-back" size={36} color={theme.text} />
+          </Pressable>
+
+          <Pressable
             accessibilityLabel="설정"
             onPress={onOpenSettings}
-            style={[styles.settingsButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
+            style={[styles.topIconButton, { borderColor: theme.border, backgroundColor: theme.surface }]}
           >
             <MaterialIcons name="settings" size={36} color={theme.text} />
           </Pressable>
@@ -246,13 +256,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   topRightWrap: {
-    minWidth: 90,
+    minWidth: 170,
     flexDirection: "row",
     justifyContent: "flex-end",
     alignItems: "center",
-    gap: 0,
+    gap: 8,
   },
-  settingsButton: {
+  topIconButton: {
     width: 70,
     height: 70,
     borderRadius: 16,

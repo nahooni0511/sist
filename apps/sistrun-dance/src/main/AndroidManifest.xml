@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <queries>
+        <package android:name="com.sistrun.manager" />
+    </queries>
+
     <uses-feature
         android:name="android.software.leanback"
         android:required="false" />

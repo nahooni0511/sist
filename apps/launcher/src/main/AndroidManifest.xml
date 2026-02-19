@@ -8,6 +8,8 @@
         <package android:name="com.sistrun.manager" />
         <package android:name="com.yourcompany.peboard" />
         <package android:name="com.sistrun.dance" />
+        <package android:name="com.sistrun.standhold" />
+        <package android:name="com.example.fluttter_data_park" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
@@ -47,6 +49,9 @@
             android:exported="false" />
         <activity
             android:name=".AppDrawerActivity"
+            android:exported="false" />
+        <activity
+            android:name=".WorkoutAppPickerActivity"
             android:exported="false" />
 
         <receiver

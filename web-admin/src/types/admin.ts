@@ -24,8 +24,16 @@ export interface DeviceAppVersion {
   versionCode?: number;
 }
 
+export type DeviceType = "시스트파크" | "시스트런";
+
+export interface DeviceModuleItem {
+  name: string;
+  portNumber: number;
+}
+
 export interface DeviceItem {
   deviceId: string;
+  deviceType?: DeviceType;
   deviceKey?: string;
   deviceName?: string;
   model?: string;
@@ -37,6 +45,7 @@ export interface DeviceItem {
   lng?: number;
   groupName?: string;
   installedApps?: DeviceAppVersion[];
+  modules?: DeviceModuleItem[];
 }
 
 export type DeviceCommandType =
@@ -81,11 +90,32 @@ export interface ApkListFilters {
 
 export interface DeviceListFilters {
   query?: string;
-  status?: "online" | "offline" | "unknown" | "all";
-  hasLocation?: boolean;
+}
+
+export interface CreateDeviceInput {
+  deviceType: DeviceType;
+  modelName: string;
+  locationName: string;
+  lat: number;
+  lng: number;
+}
+
+export interface NextDevicePreview {
+  deviceId: string;
+  modules: DeviceModuleItem[];
+}
+
+export interface AdminAuthSession {
+  accessToken: string;
+  accessTokenExpiresAt: string;
+  refreshToken: string;
+  refreshTokenExpiresAt: string;
 }
 
 export interface AdminApiConfig {
   baseUrl: string;
-  adminToken: string;
+  accessToken?: string;
+  refreshToken?: string;
+  onAuthSession?: (session: AdminAuthSession | null) => void;
+  onUnauthorized?: () => void;
 }

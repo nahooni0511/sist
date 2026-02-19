@@ -1,6 +1,8 @@
 package com.sistrun.manager
 
+import android.content.Intent
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -91,6 +93,7 @@ class MainActivity : AppCompatActivity() {
         binding.checkAutoUpdateButton.setOnClickListener { runAutoUpdateCheckNow() }
         binding.saveSettingsButton.setOnClickListener { saveSettings() }
         binding.syncSettingsButton.setOnClickListener { syncSettingsFromServer() }
+        binding.openSystemSettingsButton.setOnClickListener { openSystemSettings() }
         binding.checkDoStatusButton.setOnClickListener { refreshDeviceOwnerState() }
         binding.applyDoPolicyButton.setOnClickListener { applyDoBaselinePolicy() }
     }
@@ -143,6 +146,15 @@ class MainActivity : AppCompatActivity() {
         if (!ok) {
             binding.settingsStatusText.text = "core_dpc 연결 실패: 정책 적용 불가"
         }
+    }
+
+    private fun openSystemSettings() {
+        val intent = Intent(Settings.ACTION_SETTINGS)
+        if (intent.resolveActivity(packageManager) == null) {
+            Toast.makeText(this, getString(R.string.system_settings_unavailable), Toast.LENGTH_SHORT).show()
+            return
+        }
+        startActivity(intent)
     }
 
     private fun saveSettings() {

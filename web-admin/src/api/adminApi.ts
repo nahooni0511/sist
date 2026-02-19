@@ -1,12 +1,15 @@
 import {
   AdminApiConfig,
+  AdminAuthSession,
   ApkDetail,
   ApkItem,
   ApkListFilters,
+  CreateDeviceInput,
   CreateCommandInput,
   DeviceCommandRecord,
   DeviceItem,
-  DeviceListFilters
+  DeviceListFilters,
+  NextDevicePreview
 } from "../types/admin";
 
 class ApiError extends Error {
@@ -65,6 +68,27 @@ function toIso(value: unknown): string {
   return parsed.toISOString();
 }
 
+function optionalIso(value: unknown): string | undefined {
+  const raw = safeText(value).trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+  return parsed.toISOString();
+}
+
+function safeDeviceType(value: unknown): DeviceItem["deviceType"] {
+  const raw = safeText(value);
+  if (raw === "시스트파크" || raw === "시스트런") {
+    return raw;
+  }
+  return undefined;
+}
+
 function mapAdminApk(item: JsonRecord): ApkItem {
   return {
     id: safeText(item.id || item.apkId || item.packageName || item.appId),
@@ -106,12 +130,13 @@ function mapDevice(item: JsonRecord): DeviceItem {
 
   return {
     deviceId: safeText(item.deviceId || item.id),
+    deviceType: safeDeviceType(item.deviceType || item.type),
     deviceKey: safeText(item.deviceKey) || undefined,
     deviceName: safeText(item.deviceName || item.alias) || undefined,
     model: safeText(item.model) || undefined,
     osVersion: safeText(item.osVersion) || undefined,
     status,
-    lastSeen: toIso(item.lastSeen || item.lastSeenAt || item.updatedAt),
+    lastSeen: optionalIso(item.lastSeen || item.lastSeenAt || item.updatedAt),
     locationName: safeText(item.locationName || location.name) || undefined,
     lat: optionalNumber(item.lat) ?? optionalNumber(location.lat),
     lng: optionalNumber(item.lng) ?? optionalNumber(location.lng),
@@ -125,101 +150,21 @@ function mapDevice(item: JsonRecord): DeviceItem {
             versionCode: optionalNumber(info.versionCode)
           };
         })
+      : undefined,
+    modules: Array.isArray(item.modules)
+      ? item.modules
+          .map((module) => {
+            const info = module as JsonRecord;
+            const name = safeText(info.name).trim();
+            const portNumber = optionalNumber(info.portNumber);
+            if (!name || typeof portNumber !== "number") {
+              return null;
+            }
+            return { name, portNumber };
+          })
+          .filter((module): module is NonNullable<typeof module> => module !== null)
       : undefined
   };
-}
-
-function buildDummyDevices(): DeviceItem[] {
-  const now = Date.now();
-  const toSeen = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString();
-
-  return [
-    {
-      deviceId: "park-seoul-001",
-      deviceKey: "devkey-park-seoul-001",
-      deviceName: "서울숲 A-01",
-      model: "Sistrun 32A",
-      osVersion: "Android 11",
-      status: "online",
-      lastSeen: toSeen(1),
-      locationName: "서울숲 중앙광장",
-      lat: 37.54485,
-      lng: 127.03772,
-      groupName: "서울숲",
-      installedApps: [
-        { packageName: "com.sistrun.core_dpc", versionName: "1.3.2", versionCode: 10302 },
-        { packageName: "com.sistrun.manager", versionName: "2.4.0", versionCode: 20400 }
-      ]
-    },
-    {
-      deviceId: "park-seoul-002",
-      deviceKey: "devkey-park-seoul-002",
-      deviceName: "서울숲 A-02",
-      model: "Sistrun 32A",
-      osVersion: "Android 11",
-      status: "offline",
-      lastSeen: toSeen(142),
-      locationName: "서울숲 분수대",
-      lat: 37.54349,
-      lng: 127.04014,
-      groupName: "서울숲",
-      installedApps: [
-        { packageName: "com.sistrun.core_dpc", versionName: "1.3.1", versionCode: 10301 },
-        { packageName: "com.sistrun.manager", versionName: "2.3.8", versionCode: 20308 }
-      ]
-    },
-    {
-      deviceId: "park-busan-001",
-      deviceKey: "devkey-park-busan-001",
-      deviceName: "부산시민공원 B-01",
-      model: "Sistrun 32B",
-      osVersion: "Android 12",
-      status: "online",
-      lastSeen: toSeen(4),
-      locationName: "부산시민공원 북문",
-      lat: 35.1687,
-      lng: 129.0576,
-      groupName: "부산시민공원",
-      installedApps: [
-        { packageName: "com.sistrun.core_dpc", versionName: "1.3.2", versionCode: 10302 },
-        { packageName: "com.sistrun.manager", versionName: "2.4.0", versionCode: 20400 }
-      ]
-    },
-    {
-      deviceId: "park-incheon-001",
-      deviceKey: "devkey-park-incheon-001",
-      deviceName: "센트럴파크 C-01",
-      model: "Sistrun 32A",
-      osVersion: "Android 10",
-      status: "unknown",
-      lastSeen: toSeen(720),
-      locationName: "송도 센트럴파크 동측",
-      lat: 37.3929,
-      lng: 126.6397,
-      groupName: "센트럴파크",
-      installedApps: [
-        { packageName: "com.sistrun.core_dpc", versionName: "1.2.9", versionCode: 10209 },
-        { packageName: "com.sistrun.manager", versionName: "2.2.5", versionCode: 20205 }
-      ]
-    },
-    {
-      deviceId: "park-daegu-001",
-      deviceKey: "devkey-park-daegu-001",
-      deviceName: "두류공원 D-01",
-      model: "Sistrun 32C",
-      osVersion: "Android 12",
-      status: "offline",
-      lastSeen: toSeen(360),
-      locationName: "두류공원 문화예술회관 앞",
-      lat: 35.8561,
-      lng: 128.557,
-      groupName: "두류공원",
-      installedApps: [
-        { packageName: "com.sistrun.core_dpc", versionName: "1.3.0", versionCode: 10300 },
-        { packageName: "com.sistrun.manager", versionName: "2.3.0", versionCode: 20300 }
-      ]
-    }
-  ];
 }
 
 function filterDevices(devices: DeviceItem[], filters: DeviceListFilters): DeviceItem[] {
@@ -230,14 +175,6 @@ function filterDevices(devices: DeviceItem[], filters: DeviceListFilters): Devic
     result = result.filter((d) =>
       [d.deviceId, d.deviceKey, d.deviceName, d.locationName, d.groupName].some((v) => safeText(v).toLowerCase().includes(q))
     );
-  }
-
-  if (filters.status && filters.status !== "all") {
-    result = result.filter((d) => d.status === filters.status);
-  }
-
-  if (filters.hasLocation) {
-    result = result.filter((d) => Number.isFinite(d.lat) && Number.isFinite(d.lng));
   }
 
   return result;
@@ -259,6 +196,9 @@ function mapCommand(item: JsonRecord): DeviceCommandRecord {
 
 export function createAdminApi(config: AdminApiConfig) {
   const baseUrl = config.baseUrl.replace(/\/$/, "");
+  let accessToken = safeText(config.accessToken).trim();
+  let refreshToken = safeText(config.refreshToken).trim();
+  let refreshInFlight: Promise<void> | null = null;
 
   async function parseJsonOrThrow(response: Response): Promise<JsonRecord> {
     const text = await response.text();
@@ -278,9 +218,88 @@ export function createAdminApi(config: AdminApiConfig) {
     return json;
   }
 
-  async function request(path: string, options: RequestOptions = {}, retries = 1): Promise<JsonRecord> {
+  function parseAuthSession(raw: JsonRecord): AdminAuthSession {
+    const nextAccessToken = safeText(raw.accessToken).trim();
+    const nextRefreshToken = safeText(raw.refreshToken).trim();
+    const nextAccessTokenExpiresAt = safeText(raw.accessTokenExpiresAt).trim();
+    const nextRefreshTokenExpiresAt = safeText(raw.refreshTokenExpiresAt).trim();
+
+    if (!nextAccessToken || !nextRefreshToken) {
+      throw new Error("인증 응답이 올바르지 않습니다.");
+    }
+
+    if (!nextAccessTokenExpiresAt || !nextRefreshTokenExpiresAt) {
+      throw new Error("토큰 만료시간이 누락되었습니다.");
+    }
+
+    const accessExpiresAtDate = new Date(nextAccessTokenExpiresAt);
+    const refreshExpiresAtDate = new Date(nextRefreshTokenExpiresAt);
+    if (Number.isNaN(accessExpiresAtDate.getTime()) || Number.isNaN(refreshExpiresAtDate.getTime())) {
+      throw new Error("토큰 만료시간 형식이 올바르지 않습니다.");
+    }
+
+    return {
+      accessToken: nextAccessToken,
+      refreshToken: nextRefreshToken,
+      accessTokenExpiresAt: accessExpiresAtDate.toISOString(),
+      refreshTokenExpiresAt: refreshExpiresAtDate.toISOString()
+    };
+  }
+
+  function applyAuthSession(session: AdminAuthSession | null): void {
+    accessToken = session?.accessToken ?? "";
+    refreshToken = session?.refreshToken ?? "";
+    config.onAuthSession?.(session);
+  }
+
+  function clearAuthSession(): void {
+    applyAuthSession(null);
+    config.onUnauthorized?.();
+  }
+
+  async function refreshAuthSession(): Promise<void> {
+    if (!refreshToken) {
+      throw new ApiError(401, "세션이 만료되었습니다. 다시 로그인해 주세요.");
+    }
+
+    const res = await request(
+      "/api/admin/refresh",
+      {
+        method: "POST",
+        contentType: "application/json",
+        body: JSON.stringify({
+          refreshToken
+        })
+      },
+      0,
+      false,
+      false
+    );
+
+    const session = parseAuthSession(res);
+    applyAuthSession(session);
+  }
+
+  async function ensureRefreshed(): Promise<void> {
+    if (!refreshInFlight) {
+      refreshInFlight = refreshAuthSession().finally(() => {
+        refreshInFlight = null;
+      });
+    }
+    return refreshInFlight;
+  }
+
+  async function request(
+    path: string,
+    options: RequestOptions = {},
+    retries = 1,
+    requiresAdmin = true,
+    allowRefresh = true
+  ): Promise<JsonRecord> {
     const headers = new Headers();
-    headers.set("x-admin-token", config.adminToken);
+    if (requiresAdmin && accessToken) {
+      headers.set("x-admin-token", accessToken);
+    }
     if (options.contentType) {
       headers.set("content-type", options.contentType);
     }
@@ -291,8 +310,18 @@ export function createAdminApi(config: AdminApiConfig) {
       body: options.body ?? null
     });
 
+    if (requiresAdmin && allowRefresh && response.status === 401) {
+      try {
+        await ensureRefreshed();
+      } catch (error) {
+        clearAuthSession();
+        throw error;
+      }
+      return request(path, options, retries, requiresAdmin, false);
+    }
+
     if (!response.ok && retries > 0 && response.status >= 500) {
-      return request(path, options, retries - 1);
+      return request(path, options, retries - 1, requiresAdmin, allowRefresh);
     }
 
     return parseJsonOrThrow(response);
@@ -316,11 +345,18 @@ export function createAdminApi(config: AdminApiConfig) {
     throw lastError ?? new Error("Request failed");
   }
 
-  async function uploadViaXhr(path: string, formData: FormData, onProgress?: (p: number) => void): Promise<JsonRecord> {
+  async function uploadViaXhr(
+    path: string,
+    formData: FormData,
+    onProgress?: (p: number) => void,
+    allowRefresh = true
+  ): Promise<JsonRecord> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${baseUrl}${path}`);
-      xhr.setRequestHeader("x-admin-token", config.adminToken);
+      if (accessToken) {
+        xhr.setRequestHeader("x-admin-token", accessToken);
+      }
       xhr.timeout = 120_000;
 
       xhr.upload.onprogress = (event) => {
@@ -332,6 +368,19 @@ export function createAdminApi(config: AdminApiConfig) {
       };
 
       xhr.onload = () => {
+        if (allowRefresh && xhr.status === 401) {
+          void ensureRefreshed()
+            .then(() => uploadViaXhr(path, formData, onProgress, false))
+            .then(resolve)
+            .catch((error) => {
+              if (error instanceof ApiError && error.status === 401) {
+                clearAuthSession();
+              }
+              reject(error);
+            });
+          return;
+        }
+
         try {
           const body = xhr.responseText ? (JSON.parse(xhr.responseText) as JsonRecord) : {};
           if (xhr.status >= 200 && xhr.status < 300) {
@@ -414,6 +463,23 @@ export function createAdminApi(config: AdminApiConfig) {
     return mapAdminApk(item);
   }
 
+  async function login(input: { id: string; password: string }): Promise<AdminAuthSession> {
+    const res = await request(
+      "/api/admin/login",
+      {
+        method: "POST",
+        contentType: "application/json",
+        body: JSON.stringify(input)
+      },
+      0,
+      false
+    );
+
+    const session = parseAuthSession(res);
+    applyAuthSession(session);
+    return session;
+  }
+
   async function listApks(filters: ApkListFilters = {}): Promise<ApkItem[]> {
     const query = new URLSearchParams();
     if (filters.query) {
@@ -490,91 +556,67 @@ export function createAdminApi(config: AdminApiConfig) {
   }
 
   async function listDevices(filters: DeviceListFilters = {}): Promise<DeviceItem[]> {
-    let lastError: unknown;
     const query = new URLSearchParams();
     if (filters.query) {
       query.set("query", filters.query);
     }
-    if (filters.status && filters.status !== "all") {
-      query.set("status", filters.status);
-    }
-    if (filters.hasLocation) {
-      query.set("hasLocation", "true");
-    }
-
-    try {
-      const adminRes = await request(`/admin/devices?${query.toString()}`);
-      const list = ((adminRes.items as JsonRecord[] | undefined) ?? (adminRes.devices as JsonRecord[] | undefined) ?? []).map(mapDevice);
-      if (list.length > 0) {
-        return filterDevices(list, filters);
-      }
-    } catch (error) {
-      lastError = error;
-      if (!(error instanceof ApiError) || error.status !== 404) {
-        // Fall through to legacy endpoints and, in dev, seeded data.
-      }
-    }
-
-    try {
-      const legacy = await request("/api/commands");
-      const commands = ((legacy.commands as JsonRecord[] | undefined) ?? []).map(mapCommand);
-      const now = Date.now();
-      const byDevice = new Map<string, DeviceItem>();
-
-      commands.forEach((command) => {
-        if (!command.deviceId) {
-          return;
-        }
-        const lastSeen = Date.parse(command.updatedAt);
-        const prev = byDevice.get(command.deviceId);
-        const status: DeviceItem["status"] = now - lastSeen < 5 * 60_000 ? "online" : "offline";
-        if (!prev || Date.parse(prev.lastSeen || "1970-01-01") < lastSeen) {
-          byDevice.set(command.deviceId, {
-            deviceId: command.deviceId,
-            deviceName: command.deviceId,
-            status,
-            lastSeen: command.updatedAt,
-            model: "unknown",
-            osVersion: "unknown"
-          });
-        }
-      });
-
-      const legacyDevices = filterDevices(Array.from(byDevice.values()), filters);
-      if (legacyDevices.length > 0) {
-        return legacyDevices;
-      }
-    } catch (error) {
-      lastError = error;
-      // Ignore and fallback to seeded demo data in development.
-    }
-
-    if (!import.meta.env.DEV) {
-      if (lastError) {
-        throw lastError;
-      }
-      return [];
-    }
-
-    return filterDevices(buildDummyDevices(), filters);
+    const adminRes = await request(`/admin/devices?${query.toString()}`);
+    const list = ((adminRes.items as JsonRecord[] | undefined) ?? (adminRes.devices as JsonRecord[] | undefined) ?? []).map(mapDevice);
+    return filterDevices(list, filters);
   }
 
   async function getDevice(deviceId: string): Promise<DeviceItem> {
-    try {
-      const adminRes = await request(`/admin/devices/${encodeURIComponent(deviceId)}`);
-      return mapDevice((adminRes.device as JsonRecord | undefined) ?? adminRes);
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.status !== 404) {
-        throw error;
-      }
+    const adminRes = await request(`/admin/devices/${encodeURIComponent(deviceId)}`);
+    return mapDevice((adminRes.device as JsonRecord | undefined) ?? adminRes);
+  }
+
+  async function createDevice(input: CreateDeviceInput): Promise<DeviceItem> {
+    const adminRes = await request("/admin/devices", {
+      method: "POST",
+      contentType: "application/json",
+      body: JSON.stringify({
+        deviceType: input.deviceType,
+        modelName: input.modelName,
+        location: {
+          name: input.locationName,
+          lat: input.lat,
+          lng: input.lng
+        }
+      })
+    });
+
+    return mapDevice((adminRes.device as JsonRecord | undefined) ?? adminRes);
+  }
+
+  async function previewNextDevice(deviceType: CreateDeviceInput["deviceType"]): Promise<NextDevicePreview> {
+    const query = new URLSearchParams({
+      deviceType
+    });
+    const adminRes = await request(`/admin/devices/next-id?${query.toString()}`);
+
+    const deviceId = safeText(adminRes.deviceId).trim();
+    if (!deviceId) {
+      throw new Error("다음 deviceId 조회에 실패했습니다.");
     }
 
-    const devices = await listDevices();
-    const found = devices.find((d) => d.deviceId === deviceId);
-    if (!found) {
-      throw new Error(`Device not found: ${deviceId}`);
-    }
-    return found;
+    const modules = Array.isArray(adminRes.modules)
+      ? adminRes.modules
+          .map((module) => {
+            const info = module as JsonRecord;
+            const name = safeText(info.name).trim();
+            const portNumber = optionalNumber(info.portNumber);
+            if (!name || typeof portNumber !== "number") {
+              return null;
+            }
+            return { name, portNumber };
+          })
+          .filter((module): module is NonNullable<typeof module> => module !== null)
+      : [];
+
+    return {
+      deviceId,
+      modules
+    };
   }
 
   async function createDeviceCommand(deviceId: string, input: CreateCommandInput): Promise<DeviceCommandRecord> {
@@ -648,11 +690,14 @@ export function createAdminApi(config: AdminApiConfig) {
   }
 
   return {
+    login,
     uploadApk,
     listApks,
     getApk,
     listDevices,
     getDevice,
+    createDevice,
+    previewNextDevice,
     createDeviceCommand,
     listDeviceCommands,
     getCommand

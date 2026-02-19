@@ -20,6 +20,7 @@ pose = [
 
 [project.scripts]
 ai-box-server = "ai_box_server.__main__:main"
+ai-box-stand-hold-server = "ai_box_server.stand_hold_server:main"
 
 [tool.setuptools.package-dir]
 "" = "src"

@@ -22,6 +22,7 @@ class AppDrawerActivity : AppCompatActivity() {
     private val drawerApps = listOf(
         DrawerApp("pe-board", "com.yourcompany.peboard", "sports_score"),
         DrawerApp("sistrun-dance", "com.sistrun.dance", "music_note"),
+        DrawerApp("integrate-test", "com.example.fluttter_data_park", "fitness_center"),
         DrawerApp("파일", "com.android.documentsui", "folder"),
         DrawerApp("game", null, "sports_esports")
     )

@@ -3,6 +3,8 @@ package com.sistrun.core_dpc.admin
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.UserManager
 import android.util.Log
@@ -51,7 +53,7 @@ class DpmController(private val context: Context) {
 
         return try {
             val lockTaskPackages = arrayOf(
-                "com.sistrun.launcher",
+                LAUNCHER_PACKAGE,
                 "com.sistrun.manager",
                 "com.sistrun.core_dpc"
             )
@@ -69,6 +71,7 @@ class DpmController(private val context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 runCatching { dpm.setKeyguardDisabled(adminComponent, true) }
             }
+            val homePinned = ensureLauncherPersistentHome("applyBaselinePolicies")
 
             TaskStatusInfo(
                 taskId = taskId,
@@ -78,7 +81,7 @@ class DpmController(private val context: Context) {
                 status = "SUCCESS",
                 progress = 100,
                 resultCode = 0,
-                message = "Baseline policies applied",
+                message = "Baseline policies applied (homePinned=$homePinned)",
                 updatedAt = System.currentTimeMillis()
             )
         } catch (e: Exception) {
@@ -95,6 +98,48 @@ class DpmController(private val context: Context) {
                 updatedAt = System.currentTimeMillis()
             )
         }
+    }
+
+    fun ensureLauncherPersistentHome(reason: String): Boolean {
+        val status = isDeviceOwnerReady()
+        if (!status.ready || dpm == null) {
+            Log.i(TAG, "Skip launcher HOME pinning reason=$reason status=${status.reason}")
+            return false
+        }
+
+        val launcherComponent = resolveLauncherHomeActivity()
+        if (launcherComponent == null) {
+            Log.i(TAG, "Skip launcher HOME pinning reason=$reason launcher activity missing")
+            return false
+        }
+
+        val homeFilter = IntentFilter(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addCategory(Intent.CATEGORY_DEFAULT)
+        }
+
+        return runCatching {
+            dpm.clearPackagePersistentPreferredActivities(adminComponent, LAUNCHER_PACKAGE)
+            dpm.addPersistentPreferredActivity(adminComponent, homeFilter, launcherComponent)
+            Log.i(TAG, "Launcher HOME pinned reason=$reason component=$launcherComponent")
+            true
+        }.onFailure { error ->
+            Log.e(TAG, "Failed to pin launcher HOME reason=$reason", error)
+        }.getOrDefault(false)
+    }
+
+    private fun resolveLauncherHomeActivity(): ComponentName? {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            `package` = LAUNCHER_PACKAGE
+        }
+        @Suppress("DEPRECATION")
+        val resolved = context.packageManager.resolveActivity(homeIntent, 0) ?: return null
+        val info = resolved.activityInfo ?: return null
+        if (info.packageName != LAUNCHER_PACKAGE) {
+            return null
+        }
+        return ComponentName(info.packageName, info.name)
     }
 
     fun requestReboot(reason: String): TaskStatusInfo {
@@ -162,5 +207,6 @@ class DpmController(private val context: Context) {
     companion object {
         private const val TAG = "CORE_DPC_POLICY"
         const val REBOOT_NOT_SUPPORTED = -3201
+        const val LAUNCHER_PACKAGE = "com.sistrun.launcher"
     }
 }

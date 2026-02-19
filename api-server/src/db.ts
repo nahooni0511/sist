@@ -32,6 +32,42 @@ export type AppEntry = {
 
 export type CommandType = "INSTALL_APP" | "UPDATE_APP" | "REBOOT" | "APPLY_POLICY";
 export type CommandStatus = "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
+export type DeviceType = "시스트파크" | "시스트런";
+
+export type DevicePackageVersion = {
+  packageName: string;
+  versionCode: number;
+};
+
+export type DeviceModuleRecord = {
+  name: string;
+  portNumber: number;
+};
+
+export type DeviceCreatePreview = {
+  deviceId: string;
+  modules: DeviceModuleRecord[];
+};
+
+export type DeviceRecord = {
+  deviceId: string;
+  deviceType?: DeviceType;
+  modelName?: string;
+  locationName?: string;
+  lat?: number;
+  lng?: number;
+  lastSeenAt?: string;
+  installedApps: DevicePackageVersion[];
+  modules: DeviceModuleRecord[];
+};
+
+export type CreateDeviceInput = {
+  deviceType: DeviceType;
+  modelName: string;
+  locationName: string;
+  lat: number;
+  lng: number;
+};
 
 export type CommandRecord = {
   id: string;
@@ -97,7 +133,12 @@ const SCHEMA_STATEMENTS = [
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS devices (
     device_id VARCHAR(120) NOT NULL,
-    last_seen_at VARCHAR(30) NOT NULL,
+    device_type VARCHAR(30) NULL,
+    model_name VARCHAR(120) NULL,
+    location_name VARCHAR(255) NULL,
+    latitude DOUBLE NULL,
+    longitude DOUBLE NULL,
+    last_seen_at VARCHAR(30) NULL,
     PRIMARY KEY (device_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS device_packages (
@@ -106,6 +147,14 @@ const SCHEMA_STATEMENTS = [
     version_code INT NOT NULL,
     PRIMARY KEY (device_id, package_name),
     CONSTRAINT fk_device_packages_device FOREIGN KEY (device_id) REFERENCES devices(device_id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS device_modules (
+    device_id VARCHAR(120) NOT NULL,
+    module_name VARCHAR(120) NOT NULL,
+    port_number INT NOT NULL,
+    PRIMARY KEY (device_id, module_name),
+    KEY idx_device_modules_device (device_id),
+    CONSTRAINT fk_device_modules_device FOREIGN KEY (device_id) REFERENCES devices(device_id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS commands (
     id CHAR(36) NOT NULL,
@@ -153,6 +202,32 @@ type SettingRow = RowDataPacket & {
   setting_value: string;
 };
 
+type DeviceRow = RowDataPacket & {
+  device_id: string;
+  device_type: string | null;
+  model_name: string | null;
+  location_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  last_seen_at: string | null;
+};
+
+type DevicePackageRow = RowDataPacket & {
+  device_id: string;
+  package_name: string;
+  version_code: number;
+};
+
+type DeviceModuleRow = RowDataPacket & {
+  device_id: string;
+  module_name: string;
+  port_number: number;
+};
+
+type CountRow = RowDataPacket & {
+  cnt: number;
+};
+
 type CommandRow = RowDataPacket & {
   id: string;
   device_id: string;
@@ -195,6 +270,7 @@ export class MySqlDb {
     for (const statement of SCHEMA_STATEMENTS) {
       await this.pool.query(statement);
     }
+    await this.ensureDeviceSchema();
     await this.seedDefaultSettings();
   }
 
@@ -234,6 +310,34 @@ export class MySqlDb {
         [key, value]
       );
     }
+  }
+
+  private async hasColumn(tableName: string, columnName: string): Promise<boolean> {
+    const [rows] = await this.pool.execute<CountRow[]>(
+      `SELECT COUNT(*) AS cnt
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [this.config.database, tableName, columnName]
+    );
+    return (rows[0]?.cnt ?? 0) > 0;
+  }
+
+  private async ensureDeviceSchema(): Promise<void> {
+    const addColumnIfMissing = async (columnName: string, ddl: string) => {
+      if (!(await this.hasColumn("devices", columnName))) {
+        await this.pool.query(ddl);
+      }
+    };
+
+    await addColumnIfMissing("device_type", "ALTER TABLE devices ADD COLUMN device_type VARCHAR(30) NULL AFTER device_id");
+    await addColumnIfMissing("model_name", "ALTER TABLE devices ADD COLUMN model_name VARCHAR(120) NULL AFTER device_type");
+    await addColumnIfMissing(
+      "location_name",
+      "ALTER TABLE devices ADD COLUMN location_name VARCHAR(255) NULL AFTER model_name"
+    );
+    await addColumnIfMissing("latitude", "ALTER TABLE devices ADD COLUMN latitude DOUBLE NULL AFTER location_name");
+    await addColumnIfMissing("longitude", "ALTER TABLE devices ADD COLUMN longitude DOUBLE NULL AFTER latitude");
+    await this.pool.query("ALTER TABLE devices MODIFY COLUMN last_seen_at VARCHAR(30) NULL");
   }
 
 
@@ -391,6 +495,177 @@ export class MySqlDb {
       const values = entries.flatMap(([key, value]) => [key, value]);
       await conn.query(`INSERT INTO settings (setting_key, setting_value) VALUES ${placeholders}`, values);
     });
+  }
+
+  private async getInstalledPackagesByDeviceIds(deviceIds: string[]): Promise<Map<string, DevicePackageVersion[]>> {
+    const map = new Map<string, DevicePackageVersion[]>();
+    if (deviceIds.length === 0) {
+      return map;
+    }
+
+    const placeholders = deviceIds.map(() => "?").join(", ");
+    const [rows] = await this.pool.query<DevicePackageRow[]>(
+      `SELECT device_id, package_name, version_code
+       FROM device_packages
+       WHERE device_id IN (${placeholders})
+       ORDER BY device_id ASC, package_name ASC`,
+      deviceIds
+    );
+
+    for (const row of rows) {
+      const current = map.get(row.device_id) ?? [];
+      current.push({
+        packageName: row.package_name,
+        versionCode: row.version_code
+      });
+      map.set(row.device_id, current);
+    }
+
+    return map;
+  }
+
+  private async getModulesByDeviceIds(deviceIds: string[]): Promise<Map<string, DeviceModuleRecord[]>> {
+    const map = new Map<string, DeviceModuleRecord[]>();
+    if (deviceIds.length === 0) {
+      return map;
+    }
+
+    const placeholders = deviceIds.map(() => "?").join(", ");
+    const [rows] = await this.pool.query<DeviceModuleRow[]>(
+      `SELECT device_id, module_name, port_number
+       FROM device_modules
+       WHERE device_id IN (${placeholders})
+       ORDER BY device_id ASC, module_name ASC`,
+      deviceIds
+    );
+
+    for (const row of rows) {
+      const current = map.get(row.device_id) ?? [];
+      current.push({
+        name: row.module_name,
+        portNumber: row.port_number
+      });
+      map.set(row.device_id, current);
+    }
+
+    return map;
+  }
+
+  private async previewNextDeviceFromSource(
+    source: { execute: Pool["execute"] | PoolConnection["execute"] },
+    deviceType: DeviceType,
+    lockForUpdate: boolean
+  ): Promise<DeviceCreatePreview> {
+    const prefix = toDeviceIdPrefix(deviceType);
+    const lockSuffix = lockForUpdate ? " FOR UPDATE" : "";
+    const [rows] = await source.execute<RowDataPacket[]>(
+      `SELECT device_id
+       FROM devices
+       WHERE device_id LIKE ?${lockSuffix}`,
+      [`${prefix}-%`]
+    );
+
+    const nextSequence = computeNextSequence(
+      rows.map((row) => String((row as { device_id?: unknown }).device_id ?? "")),
+      prefix
+    );
+    return buildDeviceCreatePreview(deviceType, nextSequence);
+  }
+
+  async previewNextDevice(deviceType: DeviceType): Promise<DeviceCreatePreview> {
+    return this.previewNextDeviceFromSource(this.pool, deviceType, false);
+  }
+
+  async listDevices(query?: string): Promise<DeviceRecord[]> {
+    const values: unknown[] = [];
+    let whereClause = "";
+
+    if (query && query.trim()) {
+      const keyword = `%${query.trim()}%`;
+      whereClause = `WHERE (
+        device_id LIKE ? OR
+        IFNULL(device_type, '') LIKE ? OR
+        IFNULL(model_name, '') LIKE ? OR
+        IFNULL(location_name, '') LIKE ?
+      )`;
+      values.push(keyword, keyword, keyword, keyword);
+    }
+
+    const [rows] = await this.pool.query<DeviceRow[]>(
+      `SELECT device_id, device_type, model_name, location_name, latitude, longitude, last_seen_at
+       FROM devices
+      ${whereClause}
+       ORDER BY device_id ASC`,
+      values
+    );
+
+    const deviceIds = rows.map((row) => row.device_id);
+    const [installedByDevice, modulesByDevice] = await Promise.all([
+      this.getInstalledPackagesByDeviceIds(deviceIds),
+      this.getModulesByDeviceIds(deviceIds)
+    ]);
+
+    return rows.map((row) =>
+      toDeviceRecord(row, installedByDevice.get(row.device_id) ?? [], modulesByDevice.get(row.device_id) ?? [])
+    );
+  }
+
+  async getDeviceById(deviceId: string): Promise<DeviceRecord | null> {
+    const [rows] = await this.pool.execute<DeviceRow[]>(
+      `SELECT device_id, device_type, model_name, location_name, latitude, longitude, last_seen_at
+       FROM devices
+       WHERE device_id = ?
+       LIMIT 1`,
+      [deviceId]
+    );
+
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    const [installedByDevice, modulesByDevice] = await Promise.all([
+      this.getInstalledPackagesByDeviceIds([deviceId]),
+      this.getModulesByDeviceIds([deviceId])
+    ]);
+    return toDeviceRecord(row, installedByDevice.get(deviceId) ?? [], modulesByDevice.get(deviceId) ?? []);
+  }
+
+  async createDevice(input: CreateDeviceInput): Promise<string> {
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+      try {
+        return await this.withTransaction(async (conn) => {
+          const preview = await this.previewNextDeviceFromSource(conn, input.deviceType, true);
+
+          await conn.execute(
+            `INSERT INTO devices (device_id, device_type, model_name, location_name, latitude, longitude, last_seen_at)
+             VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+            [preview.deviceId, input.deviceType, input.modelName, input.locationName, input.lat, input.lng]
+          );
+
+          if (preview.modules.length > 0) {
+            const placeholders = preview.modules.map(() => "(?, ?, ?)").join(", ");
+            const values = preview.modules.flatMap((module) => [preview.deviceId, module.name, module.portNumber]);
+            await conn.query(
+              `INSERT INTO device_modules (device_id, module_name, port_number)
+               VALUES ${placeholders}`,
+              values
+            );
+          }
+
+          return preview.deviceId;
+        });
+      } catch (error) {
+        const maybeError = error as { code?: string };
+        if (maybeError.code === "ER_DUP_ENTRY" && attempt < maxRetries - 1) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error("기기 ID 생성에 실패했습니다.");
   }
 
   async saveDeviceState(
@@ -623,6 +898,74 @@ function toCommandRecord(row: CommandRow): CommandRecord {
     finishedAt: row.finished_at ?? undefined,
     resultMessage: row.result_message ?? undefined,
     resultCode: row.result_code ?? undefined
+  };
+}
+
+function toDeviceRecord(
+  row: DeviceRow,
+  installedApps: DevicePackageVersion[],
+  modules: DeviceModuleRecord[]
+): DeviceRecord {
+  return {
+    deviceId: row.device_id,
+    deviceType: row.device_type === "시스트파크" || row.device_type === "시스트런" ? row.device_type : undefined,
+    modelName: row.model_name ?? undefined,
+    locationName: row.location_name ?? undefined,
+    lat: typeof row.latitude === "number" ? row.latitude : undefined,
+    lng: typeof row.longitude === "number" ? row.longitude : undefined,
+    lastSeenAt: row.last_seen_at ?? undefined,
+    installedApps,
+    modules
+  };
+}
+
+function toDeviceIdPrefix(deviceType: DeviceType): "park" | "run" {
+  return deviceType === "시스트파크" ? "park" : "run";
+}
+
+function computeNextSequence(deviceIds: string[], prefix: "park" | "run"): number {
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`);
+  let maxSequence = 0;
+
+  for (const deviceId of deviceIds) {
+    const match = deviceId.match(pattern);
+    if (!match) {
+      continue;
+    }
+
+    const sequence = Number(match[1]);
+    if (Number.isInteger(sequence) && sequence > maxSequence) {
+      maxSequence = sequence;
+    }
+  }
+
+  return maxSequence + 1;
+}
+
+function buildDeviceCreatePreview(deviceType: DeviceType, sequence: number): DeviceCreatePreview {
+  if (sequence > 999) {
+    throw new Error("기기 번호가 999를 초과했습니다.");
+  }
+
+  const prefix = toDeviceIdPrefix(deviceType);
+  const suffix = String(sequence).padStart(3, "0");
+  const deviceId = `${prefix}-${suffix}`;
+
+  const portPrefixAndroid = deviceType === "시스트런" ? "10" : "12";
+  const portPrefixAiBox = deviceType === "시스트런" ? "11" : "13";
+
+  return {
+    deviceId,
+    modules: [
+      {
+        name: "안드로이드",
+        portNumber: Number(`${portPrefixAndroid}${suffix}`)
+      },
+      {
+        name: "AI BOX",
+        portNumber: Number(`${portPrefixAiBox}${suffix}`)
+      }
+    ]
   };
 }
 

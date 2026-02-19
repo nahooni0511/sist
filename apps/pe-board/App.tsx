@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { Alert, LogBox, StyleSheet, View, useWindowDimensions } from "react-native";
+import { useCallback, useEffect } from "react";
+import { Alert, BackHandler, LogBox, StyleSheet, View, useWindowDimensions } from "react-native";
 import * as NavigationBar from "expo-navigation-bar";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import * as ScreenOrientation from "expo-screen-orientation";
@@ -42,6 +42,11 @@ const Root = () => {
   }, []);
 
   useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => true);
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     const applySystemUi = async () => {
       await NavigationBar.setVisibilityAsync(state.settings.fullscreen ? "hidden" : "visible");
       await NavigationBar.setButtonStyleAsync(state.settings.darkMode ? "light" : "dark");
@@ -81,6 +86,20 @@ const Root = () => {
     ]);
   };
 
+  const handleInAppBack = useCallback(() => {
+    if (state.settingsOpen) {
+      actions.setSettingsOpen(false);
+      return;
+    }
+
+    if (state.currentTab !== "home") {
+      actions.setCurrentTab("home");
+      return;
+    }
+
+    BackHandler.exitApp();
+  }, [actions, state.currentTab, state.settingsOpen]);
+
   const activeMeta = TAB_META[state.currentTab];
   const uiScale = width < COMPACT_WIDTH_BREAKPOINT ? COMPACT_UI_SCALE : 1;
   const horizontalOverflow = uiScale < 1 ? (width / uiScale - width) / 2 : 0;
@@ -109,6 +128,7 @@ const Root = () => {
           darkMode={state.settings.darkMode}
           fullscreen={state.settings.fullscreen}
           onTabPress={actions.setCurrentTab}
+          onBackPress={handleInAppBack}
           onOpenSettings={() => actions.setSettingsOpen(true)}
         >
           {state.currentTab === "home" ? <HomeScreen /> : null}

@@ -9,6 +9,7 @@ class CoreDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onEnabled(context: Context, intent: Intent) {
         Log.i(TAG, "Device admin enabled")
+        ensureLauncherHome(context, "device_admin_enabled")
     }
 
     override fun onDisabled(context: Context, intent: Intent) {
@@ -17,6 +18,13 @@ class CoreDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onProfileProvisioningComplete(context: Context, intent: Intent) {
         Log.i(TAG, "Provisioning complete")
+        ensureLauncherHome(context, "profile_provisioning_complete")
+    }
+
+    private fun ensureLauncherHome(context: Context, reason: String) {
+        val applied = DpmController(context.applicationContext)
+            .ensureLauncherPersistentHome(reason)
+        Log.i(TAG, "Launcher HOME pinning reason=$reason applied=$applied")
     }
 
     companion object {

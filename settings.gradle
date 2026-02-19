@@ -27,3 +27,9 @@ project(":manager").projectDir = file("apps/manager")
 
 include(":core_dpc")
 project(":core_dpc").projectDir = file("apps/core_dpc")
+
+include(":sist_stand_hold")
+project(":sist_stand_hold").projectDir = file("apps/sist_stand_hold")
+
+include(":integrate_test")
+project(":integrate_test").projectDir = file("apps/integrate_test")

@@ -91,11 +91,71 @@ object ManagerPrefs {
     fun sharedSettings(context: Context): Map<String, String> {
         val config = load(context)
         val values = mutableMapOf<String, String>()
-        values["API_BASE_URL"] = config.serverUrl
-        values["DEVICE_ID"] = config.deviceId
-        values["AI_BOX_IP"] = config.aiBoxIp
+        values[SHARED_KEY_API_BASE_URL] = config.serverUrl
+        values[SHARED_KEY_DEVICE_ID] = config.deviceId
+        values[SHARED_KEY_AI_BOX_IP] = config.aiBoxIp
         values.putAll(config.extras)
         return values
+    }
+
+    fun updateSharedSetting(context: Context, key: String, value: String): Boolean {
+        val normalizedKey = key.trim()
+        if (normalizedKey.isBlank()) {
+            return false
+        }
+
+        val current = load(context)
+        return when (normalizedKey) {
+            SHARED_KEY_API_BASE_URL -> {
+                save(
+                    context = context,
+                    serverUrl = value,
+                    deviceId = current.deviceId,
+                    aiBoxIp = current.aiBoxIp,
+                    autoUpdateEnabled = current.autoUpdateEnabled,
+                    extras = current.extras
+                )
+                true
+            }
+
+            SHARED_KEY_DEVICE_ID -> {
+                save(
+                    context = context,
+                    serverUrl = current.serverUrl,
+                    deviceId = value,
+                    aiBoxIp = current.aiBoxIp,
+                    autoUpdateEnabled = current.autoUpdateEnabled,
+                    extras = current.extras
+                )
+                true
+            }
+
+            SHARED_KEY_AI_BOX_IP -> {
+                save(
+                    context = context,
+                    serverUrl = current.serverUrl,
+                    deviceId = current.deviceId,
+                    aiBoxIp = value,
+                    autoUpdateEnabled = current.autoUpdateEnabled,
+                    extras = current.extras
+                )
+                true
+            }
+
+            else -> {
+                val extras = current.extras.toMutableMap()
+                extras[normalizedKey] = value
+                save(
+                    context = context,
+                    serverUrl = current.serverUrl,
+                    deviceId = current.deviceId,
+                    aiBoxIp = current.aiBoxIp,
+                    autoUpdateEnabled = current.autoUpdateEnabled,
+                    extras = extras
+                )
+                true
+            }
+        }
     }
 
     fun extrasToMultiline(extras: Map<String, String>): String {
@@ -147,4 +207,8 @@ object ManagerPrefs {
         }
         return "device-${UUID.randomUUID()}"
     }
+
+    const val SHARED_KEY_API_BASE_URL = "API_BASE_URL"
+    const val SHARED_KEY_DEVICE_ID = "DEVICE_ID"
+    const val SHARED_KEY_AI_BOX_IP = "AI_BOX_IP"
 }

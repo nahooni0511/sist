@@ -41,8 +41,13 @@ export default function DeviceMap({ devices }: Props) {
           <Popup>
             <div className="map-popup">
               <strong>{item.deviceName || item.deviceId}</strong>
+              <p>타입: {item.deviceType || "-"}</p>
               <p>상태: {item.status}</p>
               <p>마지막 보고: {item.lastSeen ? new Date(item.lastSeen).toLocaleString() : "-"}</p>
+              <a href={`https://www.google.com/maps?q=${item.lat},${item.lng}`} target="_blank" rel="noreferrer">
+                구글맵으로 이동
+              </a>
+              <br />
               <Link to={`/devices/${encodeURIComponent(item.deviceId)}`}>상세로 이동</Link>
             </div>
           </Popup>

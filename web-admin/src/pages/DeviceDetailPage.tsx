@@ -142,8 +142,21 @@ export default function DeviceDetailPage() {
             <p>
               location: {device.locationName || "-"}
               {Number.isFinite(device.lat) && Number.isFinite(device.lng) && (
-                <span className="mono"> ({device.lat?.toFixed(5)}, {device.lng?.toFixed(5)})</span>
+                <span className="mono">
+                  {" "}
+                  (
+                  <a href={`https://www.google.com/maps?q=${device.lat},${device.lng}`} target="_blank" rel="noreferrer">
+                    {device.lat?.toFixed(5)}, {device.lng?.toFixed(5)}
+                  </a>
+                  )
+                </span>
               )}
+            </p>
+            <p>
+              modules:{" "}
+              {device.modules && device.modules.length > 0
+                ? device.modules.map((module) => `${module.name}(${module.portNumber})`).join(", ")
+                : "-"}
             </p>
             <p>활성 명령: {actionable}개</p>
           </div>

@@ -8,7 +8,16 @@ import crypto from "node:crypto";
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
-import { AppEntry, AppRelease, CommandRecord, CommandStatus, CommandType, MySqlDb } from "./db.js";
+import {
+  AppEntry,
+  AppRelease,
+  CommandRecord,
+  CommandStatus,
+  CommandType,
+  CreateDeviceInput,
+  DeviceRecord,
+  MySqlDb
+} from "./db.js";
 import { MinioObjectStorage } from "./object-storage.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -21,8 +30,23 @@ fs.mkdirSync(tmpDir, { recursive: true });
 
 const app = express();
 const port = parseEnvNumber("PORT", 4000);
-const adminToken = process.env.ADMIN_TOKEN ?? "sistrun-admin";
 const baseUrl = process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`;
+const hardcodedAdminId = "sist-admin";
+const hardcodedAdminPassword = "SistSist11@";
+const accessTokenTtlMs = parseEnvNumber("ADMIN_ACCESS_TOKEN_TTL_MINUTES", 30) * 60_000;
+const refreshTokenTtlMs = parseEnvNumber("ADMIN_REFRESH_TOKEN_TTL_DAYS", 7) * 24 * 60 * 60_000;
+
+type AdminAuthSession = {
+  sessionId: string;
+  userId: string;
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAtMs: number;
+  refreshTokenExpiresAtMs: number;
+};
+
+const sessionsByAccessToken = new Map<string, AdminAuthSession>();
+const sessionsByRefreshToken = new Map<string, AdminAuthSession>();
 
 const db = new MySqlDb({
   host: process.env.MYSQL_HOST ?? "127.0.0.1",
@@ -88,12 +112,101 @@ const commandResultSchema = z.object({
   resultCode: z.number().int().optional()
 });
 
+const deviceTypeValues = ["시스트파크", "시스트런"] as const;
+
+const adminDeviceListQuerySchema = z.object({
+  query: z.string().optional()
+});
+
+const adminNextDeviceQuerySchema = z.object({
+  deviceType: z.enum(deviceTypeValues)
+});
+
+const adminCreateDeviceSchema = z.object({
+  deviceType: z.enum(deviceTypeValues),
+  modelName: z.string().min(1),
+  location: z.object({
+    name: z.string().min(1),
+    lat: z.coerce.number().min(-90).max(90),
+    lng: z.coerce.number().min(-180).max(180)
+  })
+});
+
+const adminLoginSchema = z.object({
+  id: z.string().min(1),
+  password: z.string().min(1)
+});
+
+const adminRefreshSchema = z.object({
+  refreshToken: z.string().min(1)
+});
+
+function issueAdminToken(prefix: "atk" | "rtk"): string {
+  return `${prefix}_${crypto.randomBytes(32).toString("hex")}`;
+}
+
+function sessionToResponse(session: AdminAuthSession) {
+  return {
+    accessToken: session.accessToken,
+    accessTokenExpiresAt: new Date(session.accessTokenExpiresAtMs).toISOString(),
+    refreshToken: session.refreshToken,
+    refreshTokenExpiresAt: new Date(session.refreshTokenExpiresAtMs).toISOString()
+  };
+}
+
+function revokeSession(session: AdminAuthSession): void {
+  sessionsByAccessToken.delete(session.accessToken);
+  sessionsByRefreshToken.delete(session.refreshToken);
+}
+
+function cleanupExpiredSessions(nowMs = Date.now()): void {
+  for (const session of Array.from(sessionsByRefreshToken.values())) {
+    if (session.refreshTokenExpiresAtMs <= nowMs) {
+      revokeSession(session);
+      continue;
+    }
+    if (session.accessTokenExpiresAtMs <= nowMs) {
+      sessionsByAccessToken.delete(session.accessToken);
+    }
+  }
+}
+
+function issueSession(userId: string): AdminAuthSession {
+  const nowMs = Date.now();
+  const session: AdminAuthSession = {
+    sessionId: uuidv4(),
+    userId,
+    accessToken: issueAdminToken("atk"),
+    refreshToken: issueAdminToken("rtk"),
+    accessTokenExpiresAtMs: nowMs + Math.max(1, accessTokenTtlMs),
+    refreshTokenExpiresAtMs: nowMs + Math.max(1, refreshTokenTtlMs)
+  };
+
+  sessionsByAccessToken.set(session.accessToken, session);
+  sessionsByRefreshToken.set(session.refreshToken, session);
+  return session;
+}
+
 function requireAdmin(req: Request, res: Response): boolean {
-  const token = req.header("x-admin-token");
-  if (token !== adminToken) {
+  cleanupExpiredSessions();
+  const token = req.header("x-admin-token")?.trim();
+  if (!token) {
     res.status(401).json({ message: "Unauthorized" });
     return false;
   }
+
+  const session = sessionsByAccessToken.get(token);
+  if (!session) {
+    res.status(401).json({ message: "Unauthorized" });
+    return false;
+  }
+
+  if (session.accessTokenExpiresAtMs <= Date.now()) {
+    sessionsByAccessToken.delete(session.accessToken);
+    res.status(401).json({ message: "Access token expired" });
+    return false;
+  }
+
   return true;
 }
 
@@ -134,6 +247,36 @@ function toLatestAppView(entry: AppEntry) {
       sha256: latest.sha256 ?? "",
       downloadUrl: buildDownloadUrl(latest.fileName)
     }
+  };
+}
+
+function toAdminDeviceView(device: DeviceRecord) {
+  const lastSeenRaw = device.lastSeenAt ?? "";
+  const seenMs = Date.parse(lastSeenRaw);
+
+  let status: "online" | "offline" | "unknown" = "unknown";
+  if (Number.isFinite(seenMs)) {
+    status = Date.now() - seenMs < 5 * 60_000 ? "online" : "offline";
+  }
+
+  return {
+    deviceId: device.deviceId,
+    deviceName: device.deviceId,
+    deviceType: device.deviceType ?? undefined,
+    model: device.modelName ?? undefined,
+    status,
+    lastSeen: Number.isFinite(seenMs) ? new Date(seenMs).toISOString() : undefined,
+    locationName: device.locationName ?? undefined,
+    lat: device.lat ?? undefined,
+    lng: device.lng ?? undefined,
+    modules: device.modules.map((module) => ({
+      name: module.name,
+      portNumber: module.portNumber
+    })),
+    installedApps: device.installedApps.map((app) => ({
+      packageName: app.packageName,
+      versionCode: app.versionCode
+    }))
   };
 }
 
@@ -226,6 +369,147 @@ const proxyDownloadHandler = asyncHandler(async (req, res) => {
 app.get("/health", (_req, res) => {
   res.json({ ok: true, timestamp: nowIso() });
 });
+
+app.post(
+  "/api/admin/login",
+  asyncHandler(async (req, res) => {
+    cleanupExpiredSessions();
+
+    const parsed = adminLoginSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const { id, password } = parsed.data;
+    if (id !== hardcodedAdminId || password !== hardcodedAdminPassword) {
+      res.status(401).json({ message: "아이디 또는 비밀번호가 올바르지 않습니다." });
+      return;
+    }
+
+    const session = issueSession(id);
+    res.json(sessionToResponse(session));
+  })
+);
+
+app.post(
+  "/api/admin/refresh",
+  asyncHandler(async (req, res) => {
+    cleanupExpiredSessions();
+
+    const parsed = adminRefreshSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const refreshToken = parsed.data.refreshToken.trim();
+    const session = sessionsByRefreshToken.get(refreshToken);
+    if (!session) {
+      res.status(401).json({ message: "Refresh token이 유효하지 않습니다." });
+      return;
+    }
+
+    if (session.refreshTokenExpiresAtMs <= Date.now()) {
+      revokeSession(session);
+      res.status(401).json({ message: "Refresh token이 만료되었습니다." });
+      return;
+    }
+
+    revokeSession(session);
+    const nextSession = issueSession(session.userId);
+    res.json(sessionToResponse(nextSession));
+  })
+);
+
+app.get(
+  "/admin/devices",
+  asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    const parsed = adminDeviceListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const devices = await db.listDevices(parsed.data.query);
+    res.json({
+      devices: devices.map(toAdminDeviceView)
+    });
+  })
+);
+
+app.post(
+  "/admin/devices",
+  asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    const parsed = adminCreateDeviceSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const payload: CreateDeviceInput = {
+      deviceType: parsed.data.deviceType,
+      modelName: parsed.data.modelName,
+      locationName: parsed.data.location.name,
+      lat: parsed.data.location.lat,
+      lng: parsed.data.location.lng
+    };
+
+    const createdDeviceId = await db.createDevice(payload);
+
+    const device = await db.getDeviceById(createdDeviceId);
+    if (!device) {
+      res.status(500).json({ message: "기기 생성 후 조회에 실패했습니다." });
+      return;
+    }
+
+    res.status(201).json({ device: toAdminDeviceView(device) });
+  })
+);
+
+app.get(
+  "/admin/devices/next-id",
+  asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    const parsed = adminNextDeviceQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const preview = await db.previewNextDevice(parsed.data.deviceType);
+    res.json(preview);
+  })
+);
+
+app.get(
+  "/admin/devices/:deviceId",
+  asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    const deviceId = routeParam(req.params.deviceId);
+    const device = await db.getDeviceById(deviceId);
+    if (!device) {
+      res.status(404).json({ message: "Device not found" });
+      return;
+    }
+
+    res.json({ device: toAdminDeviceView(device) });
+  })
+);
 
 app.get("/api/files/:fileName/download", proxyDownloadHandler);
 app.get("/downloads/:fileName", proxyDownloadHandler);

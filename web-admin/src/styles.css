@@ -78,6 +78,43 @@ button:disabled {
   font-weight: 700;
 }
 
+.danger-button {
+  border-color: rgba(180, 35, 24, 0.26);
+  color: #7a2016;
+  background: rgba(180, 35, 24, 0.08);
+  font-weight: 700;
+}
+
+.danger-button:hover {
+  background: rgba(180, 35, 24, 0.14);
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.login-card {
+  width: min(440px, 94vw);
+  display: grid;
+  gap: 0.9rem;
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.login-desc {
+  margin: 0;
+}
+
+.danger-text {
+  color: var(--danger);
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 240px 1fr;
@@ -129,30 +166,31 @@ button:disabled {
 
 .content-area {
   padding: 1.2rem;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 1rem;
 }
 
 .topbar {
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--panel);
-  padding: 1rem 1.2rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
   display: flex;
-  justify-content: space-between;
-  gap: 0.9rem;
-  align-items: flex-start;
-}
-
-.topbar h2 {
-  margin: 0;
-  font-size: 1.22rem;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .connection-inline {
   display: grid;
   grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 0.65rem;
+}
+
+.connection-inline-narrow {
+  grid-template-columns: minmax(340px, 1fr) auto;
+  align-items: end;
 }
 
 label {
@@ -220,9 +258,13 @@ label {
 .inline-filters {
   margin-top: 0.7rem;
   display: grid;
-  grid-template-columns: 1.4fr 1.2fr auto auto;
+  grid-template-columns: 1fr auto;
   gap: 0.6rem;
   align-items: center;
+}
+
+.device-create-form {
+  margin-top: 0.8rem;
 }
 
 .checkbox {

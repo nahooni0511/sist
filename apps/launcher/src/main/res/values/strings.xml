@@ -25,4 +25,11 @@
     <string name="fallback_open_settings">실행 가능한 앱이 없어 설정을 엽니다.</string>
     <string name="open_manager">관리자 열기</string>
     <string name="manager_not_installed">관리자 앱이 설치되어 있지 않습니다.</string>
+    <string name="launcher_set_default_home">HOME 버튼 동작을 위해 기본 홈 앱을 Sistrun Launcher로 설정하세요.</string>
+    <string name="workout_picker_title">WORKOUT APPS</string>
+    <string name="workout_picker_selection_hint">카드를 선택하면 앱이 실행됩니다.</string>
+    <string name="workout_picker_previous">이전 앱</string>
+    <string name="workout_picker_next">다음 앱</string>
+    <string name="workout_picker_back">뒤로가기</string>
+    <string name="workout_picker_empty">표시할 운동 앱이 없습니다.</string>
 </resources>

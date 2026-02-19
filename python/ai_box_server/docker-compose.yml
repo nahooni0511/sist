@@ -1,0 +1,56 @@
+services:
+  stand-hold:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        INSTALL_POSE: "${INSTALL_POSE:-1}"
+    image: sistrun/ai-box-server:latest
+    container_name: ai-box-stand-hold
+    restart: unless-stopped
+    init: true
+    environment:
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+    ports:
+      - "8091:8091"
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "${AIBOX_PORT:-8091}"
+      - --camera-mode
+      - "${AIBOX_CAMERA_MODE:-auto}"
+      - --video-source
+      - "${AIBOX_VIDEO_SOURCE:-0}"
+      - --fps
+      - "${AIBOX_FPS:-12}"
+      - --jpeg-quality
+      - "${AIBOX_JPEG_QUALITY:-80}"
+      - --session-seconds
+      - "${AIBOX_SESSION_SECONDS:-5}"
+      - --scoring-device
+      - "${AIBOX_SCORING_DEVICE:-auto}"
+      - --send-landmarks
+
+  dance:
+    image: sistrun/ai-box-server:latest
+    container_name: ai-box-dance
+    restart: unless-stopped
+    init: true
+    entrypoint:
+      - ai-box-server
+    ports:
+      - "8090:8090"
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8090"
+      - --video-source
+      - "${DANCE_VIDEO_SOURCE:-0}"
+      - --app-video-mode
+      - "${DANCE_APP_VIDEO_MODE:-embedded_frames}"
+      - --fps
+      - "${DANCE_FPS:-15}"
+    profiles:
+      - dance

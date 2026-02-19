@@ -36,7 +36,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        syncAiBoxIpFromSharedSetting()
         observeUiState()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        syncAiBoxIpFromSharedSetting()
     }
 
     private fun observeUiState() {
@@ -109,5 +115,13 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         releasePlayer()
+    }
+
+    private fun syncAiBoxIpFromSharedSetting() {
+        val sharedIp = SharedAiBoxIpResolver.read(this) ?: return
+        val current = binding.aiBoxIpEditText.text?.toString()?.trim().orEmpty()
+        if (current != sharedIp) {
+            binding.aiBoxIpEditText.setText(sharedIp)
+        }
     }
 }

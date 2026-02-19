@@ -1,7 +1,10 @@
 package com.sistrun.launcher
 
+import android.app.ActivityManager
+import android.app.admin.DevicePolicyManager
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -23,7 +26,6 @@ import kotlin.math.max
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private val workoutPackageName = "com.example.fluttter_data_park"
     private val registeredApps = LauncherApps.registeredApps()
     private val clockHandler = Handler(Looper.getMainLooper())
     private val timeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -35,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     private var currentBackgroundVideoIndex = 0
     private var videoWidth = 0
     private var videoHeight = 0
+    private var hasPromptedDefaultHome = false
     private val clockTick = object : Runnable {
         override fun run() {
             updateClock()
@@ -55,7 +58,7 @@ class MainActivity : AppCompatActivity() {
         binding.startButton.requestFocus()
 
         binding.startButton.setOnClickListener {
-            launchWorkoutApp()
+            startActivity(Intent(this, WorkoutAppPickerActivity::class.java))
         }
 
         binding.storeButton.setOnClickListener {
@@ -80,6 +83,8 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         enableImmersiveMode()
+        promptDefaultHomeIfNeeded()
+        startLockTaskIfPermitted()
         applyVideoCenterCrop()
         if (!binding.videoBackground.isPlaying) {
             binding.videoBackground.start()
@@ -103,21 +108,6 @@ class MainActivity : AppCompatActivity() {
         // Keep launcher in foreground instead of finishing on BACK.
     }
 
-    private fun launchWorkoutApp() {
-        val launchIntent = packageManager.getLaunchIntentForPackage(workoutPackageName)
-        if (launchIntent == null) {
-            Toast.makeText(
-                this,
-                getString(R.string.app_not_installed, workoutPackageName),
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-
-        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(launchIntent)
-    }
-
     private fun launchAnyRegisteredApp() {
         val launchableApp = registeredApps.firstOrNull { LauncherApps.resolveLaunchIntent(this, it) != null }
         if (launchableApp != null) {
@@ -139,6 +129,53 @@ class MainActivity : AppCompatActivity() {
 
         Toast.makeText(this, getString(R.string.manager_not_installed), Toast.LENGTH_SHORT).show()
         startActivity(Intent(this, AppDrawerActivity::class.java))
+    }
+
+    private fun promptDefaultHomeIfNeeded() {
+        if (hasPromptedDefaultHome || isDefaultHomeApp()) {
+            return
+        }
+
+        hasPromptedDefaultHome = true
+        Toast.makeText(this, R.string.launcher_set_default_home, Toast.LENGTH_LONG).show()
+
+        val homeSettingsIntent = Intent(Settings.ACTION_HOME_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (homeSettingsIntent.resolveActivity(packageManager) != null) {
+            startActivity(homeSettingsIntent)
+        }
+    }
+
+    private fun isDefaultHomeApp(): Boolean {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+        }
+        val resolved = packageManager.resolveActivity(homeIntent, 0) ?: return false
+        return resolved.activityInfo?.packageName == packageName
+    }
+
+    private fun startLockTaskIfPermitted() {
+        val dpm = getSystemService(DevicePolicyManager::class.java) ?: return
+        if (!dpm.isLockTaskPermitted(packageName)) {
+            return
+        }
+
+        val activityManager = getSystemService(ActivityManager::class.java) ?: return
+        val isAlreadyLocked = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            activityManager.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+        } else {
+            @Suppress("DEPRECATION")
+            activityManager.isInLockTaskMode
+        }
+        if (isAlreadyLocked) {
+            return
+        }
+
+        runCatching { startLockTask() }
+            .onFailure { error ->
+                Log.w(TAG, "Failed to start lock task", error)
+            }
     }
 
     private fun launchRegisteredApp(app: RegisteredApp, fallbackToSettings: Boolean) {

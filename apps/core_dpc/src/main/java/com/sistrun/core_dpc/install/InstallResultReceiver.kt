@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
+import com.sistrun.core_dpc.admin.DpmController
 import com.sistrun.core_dpc.model.TaskState
 import com.sistrun.core_dpc.model.TaskType
 
@@ -45,6 +46,11 @@ class InstallResultReceiver : BroadcastReceiver() {
                     ManagedAppRegistry(context).unregister(task.packageName)
                 } else {
                     ManagedAppRegistry(context).register(task.packageName)
+                    if (task.packageName == DpmController.LAUNCHER_PACKAGE) {
+                        val applied = DpmController(context.applicationContext)
+                            .ensureLauncherPersistentHome("install_result_success")
+                        Log.i(TAG, "Launcher install detected, HOME pinning applied=$applied")
+                    }
                 }
                 Log.i(TAG, "Task success taskId=$taskId package=${task.packageName}")
             }

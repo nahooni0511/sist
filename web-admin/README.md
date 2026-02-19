@@ -13,7 +13,25 @@ npm install
 npm run dev
 ```
 
-브라우저에서 기본 `http://localhost:5173` 접속 후 API URL/토큰 입력.
+브라우저에서 `http://localhost:5173` 접속 후 로그인합니다.
+
+기본 로그인(서버 하드코딩):
+- 아이디: `sist-admin`
+- 비밀번호: `SistSist11@`
+
+인증 토큰은 브라우저 `sessionStorage`에 저장되며, access token 만료 시 refresh token으로 자동 갱신됩니다.
+
+## 환경변수
+- `VITE_API_BASE_URL`: 기본 API 서버 주소
+
+예시:
+```bash
+VITE_API_BASE_URL=https://manager-api.sist.kr
+```
+
+기본 파일:
+- `/Users/nahooni0511/workspace/sistrun-hub/web-admin/.env.development`
+- `/Users/nahooni0511/workspace/sistrun-hub/web-admin/.env.production`
 
 ## API 계약
 - 기대 계약 문서: `/Users/nahooni0511/workspace/sistrun-hub/web-admin/docs/API_CONTRACT.md`

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { createAdminApi } from "./api/adminApi";
 import AdminLayout from "./layout/AdminLayout";
@@ -6,77 +6,182 @@ import { AppContext } from "./hooks/useAppContext";
 import ApkListPage from "./pages/ApkListPage";
 import ApkDetailPage from "./pages/ApkDetailPage";
 import DevicesPage from "./pages/DevicesPage";
+import DeviceCreatePage from "./pages/DeviceCreatePage";
 import DeviceDetailPage from "./pages/DeviceDetailPage";
+import { AdminAuthSession } from "./types/admin";
 
-function inferDefaultBaseUrl(): string {
+const DEFAULT_API_PORT = 4000;
+const SESSION_AUTH_KEY = "web-admin-auth-session";
+const ENV_API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim();
+
+function inferRuntimeBaseUrl(): string {
   if (typeof window === "undefined") {
-    return "http://localhost:4000";
+    return `http://localhost:${DEFAULT_API_PORT}`;
   }
 
-  const host = window.location.hostname;
-  if (!host) {
-    return "http://localhost:4000";
-  }
-  return `http://${host}:4000`;
+  const host = window.location.hostname || "localhost";
+  return `http://${host}:${DEFAULT_API_PORT}`;
 }
 
-function migrateLocalhostBaseUrl(raw: string): string {
-  if (typeof window === "undefined") {
-    return raw;
-  }
+function resolveBaseUrl(): string {
+  return ENV_API_BASE_URL || inferRuntimeBaseUrl();
+}
 
-  const currentHost = window.location.hostname;
-  const localHosts = new Set(["localhost", "127.0.0.1"]);
-  if (localHosts.has(currentHost)) {
-    return raw;
-  }
-
+function parseStoredAuthSession(raw: string): AdminAuthSession | null {
   try {
-    const parsed = new URL(raw);
-    if (localHosts.has(parsed.hostname)) {
-      return `http://${currentHost}:4000`;
+    const parsed = JSON.parse(raw) as Partial<AdminAuthSession>;
+    const accessToken = parsed.accessToken?.trim() || "";
+    const refreshToken = parsed.refreshToken?.trim() || "";
+    const accessTokenExpiresAt = parsed.accessTokenExpiresAt?.trim() || "";
+    const refreshTokenExpiresAt = parsed.refreshTokenExpiresAt?.trim() || "";
+
+    if (!accessToken || !refreshToken || !accessTokenExpiresAt || !refreshTokenExpiresAt) {
+      return null;
     }
+
+    const accessExpiresAtDate = new Date(accessTokenExpiresAt);
+    const refreshExpiresAtDate = new Date(refreshTokenExpiresAt);
+    if (Number.isNaN(accessExpiresAtDate.getTime()) || Number.isNaN(refreshExpiresAtDate.getTime())) {
+      return null;
+    }
+
+    if (refreshExpiresAtDate.getTime() <= Date.now()) {
+      return null;
+    }
+
+    return {
+      accessToken,
+      refreshToken,
+      accessTokenExpiresAt: accessExpiresAtDate.toISOString(),
+      refreshTokenExpiresAt: refreshExpiresAtDate.toISOString()
+    };
   } catch {
-    return raw;
+    return null;
+  }
+}
+
+function getStoredAuthSession(): AdminAuthSession | null {
+  if (typeof window === "undefined") {
+    return null;
   }
 
-  return raw;
+  const raw = sessionStorage.getItem(SESSION_AUTH_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  const parsed = parseStoredAuthSession(raw);
+  if (!parsed) {
+    sessionStorage.removeItem(SESSION_AUTH_KEY);
+    return null;
+  }
+  return parsed;
 }
 
 export default function App() {
-  const [baseUrl, setBaseUrlState] = useState(() => {
-    const saved = localStorage.getItem("baseUrl");
-    if (!saved) {
-      return inferDefaultBaseUrl();
+  const [baseUrl] = useState(resolveBaseUrl);
+  const [authSession, setAuthSession] = useState<AdminAuthSession | null>(() => getStoredAuthSession());
+  const [loginId, setLoginId] = useState("sist-admin");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
     }
-    return migrateLocalhostBaseUrl(saved);
-  });
-  const [adminToken, setAdminTokenState] = useState(() => localStorage.getItem("adminToken") ?? "sistrun-admin");
-
-  useEffect(() => {
-    localStorage.setItem("baseUrl", baseUrl);
-  }, [baseUrl]);
-
-  useEffect(() => {
-    localStorage.setItem("adminToken", adminToken);
-  }, [adminToken]);
+    if (!authSession) {
+      sessionStorage.removeItem(SESSION_AUTH_KEY);
+      return;
+    }
+    sessionStorage.setItem(SESSION_AUTH_KEY, JSON.stringify(authSession));
+  }, [authSession]);
 
   const api = useMemo(
     () =>
       createAdminApi({
         baseUrl,
-        adminToken
+        accessToken: authSession?.accessToken,
+        refreshToken: authSession?.refreshToken,
+        onAuthSession: setAuthSession,
+        onUnauthorized: () => {
+          setAuthSession(null);
+        }
       }),
-    [baseUrl, adminToken]
+    [baseUrl, authSession?.accessToken, authSession?.refreshToken]
   );
+
+  const logout = () => {
+    setAuthSession(null);
+    setPassword("");
+    setLoginError("");
+  };
+
+  const submitLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoginError("");
+    setIsLoggingIn(true);
+    try {
+      const session = await api.login({
+        id: loginId.trim(),
+        password
+      });
+      setAuthSession(session);
+      setPassword("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "로그인에 실패했습니다.";
+      setLoginError(message);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  if (!authSession) {
+    return (
+      <main className="login-shell">
+        <form className="panel login-card" onSubmit={submitLogin}>
+          <p className="eyebrow">SISTRUN HUB</p>
+          <h1>관리자 로그인</h1>
+          <p className="muted login-desc">
+            API 서버: <span className="mono">{baseUrl}</span>
+          </p>
+
+          <label>
+            아이디
+            <input
+              value={loginId}
+              onChange={(event) => setLoginId(event.target.value)}
+              autoComplete="username"
+              required
+            />
+          </label>
+
+          <label>
+            비밀번호
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </label>
+
+          {loginError ? <p className="status danger-text">{loginError}</p> : null}
+
+          <button type="submit" className="primary-button" disabled={isLoggingIn}>
+            {isLoggingIn ? "로그인 중..." : "로그인"}
+          </button>
+        </form>
+      </main>
+    );
+  }
 
   return (
     <AppContext.Provider
       value={{
         baseUrl,
-        adminToken,
-        setBaseUrl: setBaseUrlState,
-        setAdminToken: setAdminTokenState,
+        logout,
         api
       }}
     >
@@ -87,6 +192,7 @@ export default function App() {
             <Route path="apk" element={<ApkListPage />} />
             <Route path="apk/:apkId" element={<ApkDetailPage />} />
             <Route path="devices" element={<DevicesPage />} />
+            <Route path="devices/new" element={<DeviceCreatePage />} />
             <Route path="devices/:deviceId" element={<DeviceDetailPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/apk" replace />} />

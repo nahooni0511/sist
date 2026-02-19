@@ -3,9 +3,7 @@ import { createAdminApi } from "../api/adminApi";
 
 export interface AppContextValue {
   baseUrl: string;
-  adminToken: string;
-  setBaseUrl: (value: string) => void;
-  setAdminToken: (value: string) => void;
+  logout: () => void;
   api: ReturnType<typeof createAdminApi>;
 }
 

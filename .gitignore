@@ -9,3 +9,4 @@ build/
 .venv/
 __pycache__/
 *.pyc
+**/.emulator_screenshot/

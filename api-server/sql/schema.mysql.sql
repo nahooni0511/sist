@@ -42,7 +42,12 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE TABLE IF NOT EXISTS devices (
   device_id VARCHAR(120) NOT NULL,
-  last_seen_at VARCHAR(30) NOT NULL,
+  device_type VARCHAR(30) NULL,
+  model_name VARCHAR(120) NULL,
+  location_name VARCHAR(255) NULL,
+  latitude DOUBLE NULL,
+  longitude DOUBLE NULL,
+  last_seen_at VARCHAR(30) NULL,
   PRIMARY KEY (device_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -52,6 +57,15 @@ CREATE TABLE IF NOT EXISTS device_packages (
   version_code INT NOT NULL,
   PRIMARY KEY (device_id, package_name),
   CONSTRAINT fk_device_packages_device FOREIGN KEY (device_id) REFERENCES devices(device_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS device_modules (
+  device_id VARCHAR(120) NOT NULL,
+  module_name VARCHAR(120) NOT NULL,
+  port_number INT NOT NULL,
+  PRIMARY KEY (device_id, module_name),
+  KEY idx_device_modules_device (device_id),
+  CONSTRAINT fk_device_modules_device FOREIGN KEY (device_id) REFERENCES devices(device_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS commands (
