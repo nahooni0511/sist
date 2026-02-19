@@ -10,6 +10,7 @@ fi
 
 IMAGE_REPO="${IMAGE_REPO:-sistrun/ai-box-server}"
 CONTAINER_NAME="${CONTAINER_NAME:-ai-box-stand-hold}"
+RESTART_POLICY="${RESTART_POLICY:-always}"
 
 PORT="${AIBOX_PORT:-8091}"
 CAMERA_MODE="${AIBOX_CAMERA_MODE:-auto}"
@@ -35,7 +36,7 @@ fi
 echo "[run] ${CONTAINER_NAME} with ${IMAGE_REPO}"
 docker run -d \
   --name "${CONTAINER_NAME}" \
-  --restart unless-stopped \
+  --restart "${RESTART_POLICY}" \
   --init \
   -e "OPENAI_API_KEY=${OPENAI_API_KEY:-}" \
   -p "${PORT}:${PORT}" \
