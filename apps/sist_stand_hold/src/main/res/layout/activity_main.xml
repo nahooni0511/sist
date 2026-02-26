@@ -194,36 +194,41 @@
                         android:textStyle="bold"
                         android:visibility="gone" />
 
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="bottom|center_horizontal"
-                        android:layout_marginBottom="10dp"
-                        android:background="#70000000"
-                        android:orientation="vertical"
-                        android:paddingHorizontal="14dp"
-                        android:paddingVertical="10dp">
-
-                        <TextView
-                            android:id="@+id/currentScoreTextView"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Score: -"
-                            android:textColor="#9CFFBA"
-                            android:textSize="24sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/bestScoreTextView"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="3dp"
-                            android:text="Best: -"
-                            android:textColor="#D0E8FF"
-                            android:textSize="16sp" />
-                    </LinearLayout>
                 </FrameLayout>
             </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/analyzingContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#D0101219"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <ProgressBar
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:indeterminate="true"
+                android:indeterminateTint="#9CFFBA" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/analyzing_result"
+                android:textColor="#F0F7FF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/analyzing_result_sub"
+                android:textColor="#CDE3F7"
+                android:textSize="14sp" />
         </LinearLayout>
 
         <LinearLayout

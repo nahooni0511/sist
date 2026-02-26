@@ -204,6 +204,9 @@ class ActiveSession:
     best_metrics: dict[str, Any] = field(default_factory=dict)
     best_landmarks: list[dict[str, float]] = field(default_factory=list)
     result_sent: bool = False
+    frames_base64_seq: list[str] = field(default_factory=list)
+    poses_seq: list[PosePacket | None] = field(default_factory=list)
+    ts_ms_seq: list[int] = field(default_factory=list)
 
 
 class PoseEstimator:
@@ -938,27 +941,22 @@ class ClientSession:
                     landmarks_payload = pose_to_json_points(pose)
 
                 score = None
-                if session_active and pose is not None:
-                    result = self.scorer.score(self.active_session.reference_pose, pose)
-                    metrics = result.as_metrics(using_world=self.config.prefer_world_landmarks)
-                    score = float(result.final) if result.final is not None else None
-
-                    if score is not None and score >= self.active_session.best_score:
-                        if not landmarks_payload:
-                            landmarks_payload = pose_to_json_points(pose)
-                        self.active_session.best_score = score
-                        self.active_session.best_frame_base64 = frame_base64
-                        self.active_session.best_metrics = metrics
-                        self.active_session.best_landmarks = landmarks_payload
+                if session_active and self.active_session is not None:
+                    self.active_session.frames_base64_seq.append(frame_base64)
+                    self.active_session.poses_seq.append(pose)
+                    self.active_session.ts_ms_seq.append(int(time.time() * 1000))
 
                     remaining_ms = int(max(0.0, (self.active_session.deadline_at - time.monotonic()) * 1000.0))
                     await self._send_json(
                         {
                             "type": "session_progress",
                             "remaining_ms": remaining_ms,
-                            "current_score": score,
-                            "best_score": self.active_session.best_score if self.active_session.best_score >= 0 else None,
-                            "metrics": metrics,
+                            "current_score": None,
+                            "best_score": None,
+                            "metrics": {
+                                "reliable": False,
+                                "reason": "offline_temporal_postprocess",
+                            },
                         }
                     )
 
@@ -1186,14 +1184,16 @@ class ClientSession:
         session.result_sent = True
         self.active_session = None
 
-        best_score = session.best_score if session.best_score >= 0 else 0.0
-        best_frame = session.best_frame_base64 or ""
-
-        metrics = session.best_metrics or {
-            "score": best_score,
-            "reliable": False,
-            "reason": "No reliable frame found",
-        }
+        best_score, best_frame, metrics, best_landmarks = await asyncio.to_thread(
+            postprocess_best_from_sequence,
+            reference_pose=session.reference_pose,
+            poses_seq=session.poses_seq,
+            frames_base64_seq=session.frames_base64_seq,
+            ts_ms_seq=session.ts_ms_seq,
+            scorer=self.scorer,
+            fps=int(self.config.fps),
+            using_world=bool(self.config.prefer_world_landmarks),
+        )
 
         feedback_text, feedback_model = await asyncio.to_thread(
             self.feedback_generator.generate,
@@ -1212,7 +1212,7 @@ class ClientSession:
                 "feedback": feedback_text,
                 "feedback_model": feedback_model,
                 "metrics": metrics,
-                "landmarks": session.best_landmarks,
+                "landmarks": best_landmarks,
             }
         )
 
@@ -1284,6 +1284,383 @@ def pose_to_json_points(pose: PosePacket | None) -> list[dict[str, float]]:
             }
         )
     return points
+
+
+def postprocess_best_from_sequence(
+    *,
+    reference_pose: PosePacket,
+    poses_seq: list[PosePacket | None],
+    frames_base64_seq: list[str],
+    ts_ms_seq: list[int] | None,
+    scorer: PoseScorer,
+    fps: int,
+    using_world: bool,
+) -> tuple[float, str, dict[str, Any], list[dict[str, float]]]:
+    if not poses_seq or not frames_base64_seq:
+        metrics = {"score": 0.0, "reliable": False, "reason": "No frames buffered"}
+        return 0.0, "", metrics, []
+
+    total = min(len(poses_seq), len(frames_base64_seq))
+    poses_seq = poses_seq[:total]
+    frames_base64_seq = frames_base64_seq[:total]
+    timestamps = (ts_ms_seq or [])[:total]
+
+    smoothed_seq = stabilize_pose_sequence_rts(
+        poses_seq=poses_seq,
+        fps=max(1, int(fps)),
+        min_conf=scorer.config.conf_threshold,
+        r_base=1e-4,
+        accel_var=3.0,
+        reset_gap_frames=max(2, int(0.5 * max(int(fps), 1))),
+    )
+
+    scores = np.full((total,), np.nan, dtype=np.float32)
+    reliables = np.zeros((total,), dtype=bool)
+    results: list[ScoreResult | None] = [None] * total
+    for idx, pose in enumerate(smoothed_seq):
+        if pose is None:
+            continue
+        result = scorer.score(reference_pose, pose)
+        results[idx] = result
+        if result.final is None:
+            continue
+        scores[idx] = float(result.final)
+        reliables[idx] = bool(result.reliable)
+
+    vel = compute_motion_energy(
+        smoothed_seq,
+        conf_threshold=scorer.config.conf_threshold,
+    )
+
+    picked = pick_representative_index(
+        scores=scores,
+        reliables=reliables,
+        vel=vel,
+        fps=max(1, int(fps)),
+        stable_vel_quantile=0.35,
+        top_score_delta=12.0,
+        min_stable_seconds=0.8,
+        representative_percentile=80.0,
+    )
+    if picked is None:
+        metrics = {"score": 0.0, "reliable": False, "reason": "No reliable frame found (postprocess)"}
+        return 0.0, "", metrics, []
+
+    best_idx, temporal_debug = picked
+    picked_result = results[best_idx]
+    if picked_result is None or picked_result.final is None:
+        metrics = {"score": 0.0, "reliable": False, "reason": "Selected frame has no valid score"}
+        return 0.0, "", metrics, []
+
+    best_score = float(picked_result.final)
+    best_frame = frames_base64_seq[best_idx] or ""
+    metrics = picked_result.as_metrics(using_world=using_world)
+    if len(timestamps) == total and best_idx < len(timestamps):
+        temporal_debug["picked_timestamp_ms"] = int(timestamps[best_idx])
+        if "segment_start" in temporal_debug and "segment_end" in temporal_debug:
+            start_idx = int(temporal_debug["segment_start"])
+            end_idx = int(temporal_debug["segment_end"]) - 1
+            if 0 <= start_idx < len(timestamps):
+                temporal_debug["segment_start_ms"] = int(timestamps[start_idx])
+            if 0 <= end_idx < len(timestamps):
+                temporal_debug["segment_end_ms"] = int(timestamps[end_idx])
+    metrics["temporal"] = temporal_debug
+
+    raw_pose = poses_seq[best_idx]
+    if raw_pose is not None:
+        best_landmarks = pose_to_json_points(raw_pose)
+    else:
+        best_landmarks = pose_to_json_points(smoothed_seq[best_idx])
+    return best_score, best_frame, metrics, best_landmarks
+
+
+def stabilize_pose_sequence_rts(
+    poses_seq: list[PosePacket | None],
+    *,
+    fps: int,
+    min_conf: float,
+    r_base: float,
+    accel_var: float,
+    reset_gap_frames: int,
+) -> list[PosePacket | None]:
+    total = len(poses_seq)
+    if total == 0:
+        return []
+
+    dt = 1.0 / max(float(fps), 1.0)
+    points = np.full((total, 33, 3), np.nan, dtype=np.float32)
+    vis = np.zeros((total, 33), dtype=np.float32)
+    pres = np.zeros((total, 33), dtype=np.float32)
+
+    for t, pose in enumerate(poses_seq):
+        if pose is None:
+            continue
+        points[t] = pose.points.astype(np.float32, copy=False)
+        vis[t] = pose.vis.astype(np.float32, copy=False)
+        pres[t] = pose.pres.astype(np.float32, copy=False)
+
+    conf = np.clip(np.minimum(vis, pres), 0.0, 1.0).astype(np.float32)
+    out_points = np.full_like(points, np.nan, dtype=np.float32)
+    for joint_idx in range(33):
+        conf_joint = conf[:, joint_idx].astype(np.float64, copy=False)
+        for axis_idx in range(3):
+            z_axis = points[:, joint_idx, axis_idx].astype(np.float64, copy=False)
+            out_points[:, joint_idx, axis_idx] = kalman_rts_smooth_1d(
+                z=z_axis,
+                w=conf_joint,
+                dt=dt,
+                r_base=float(r_base),
+                accel_var=float(accel_var),
+                min_w=float(min_conf),
+                reset_gap_frames=int(reset_gap_frames),
+            ).astype(np.float32, copy=False)
+
+    out: list[PosePacket | None] = []
+    for t, raw_pose in enumerate(poses_seq):
+        if raw_pose is None:
+            out.append(None)
+            continue
+        out.append(PosePacket(points=out_points[t], vis=raw_pose.vis, pres=raw_pose.pres))
+    return out
+
+
+def kalman_rts_smooth_1d(
+    z: np.ndarray,
+    w: np.ndarray,
+    *,
+    dt: float,
+    r_base: float,
+    accel_var: float,
+    min_w: float,
+    reset_gap_frames: int,
+) -> np.ndarray:
+    total = int(z.shape[0])
+    if total == 0:
+        return z.astype(np.float32, copy=True)
+
+    z = np.asarray(z, dtype=np.float64).reshape(-1)
+    w = np.asarray(w, dtype=np.float64).reshape(-1)
+
+    valid = np.isfinite(z) & (w >= min_w)
+    if not bool(np.any(valid)):
+        return z.astype(np.float32, copy=True)
+
+    first_idx = int(np.argmax(valid))
+    init_val = float(z[first_idx])
+
+    f = np.array([[1.0, float(dt)], [0.0, 1.0]], dtype=np.float64)
+    h = np.array([1.0, 0.0], dtype=np.float64)
+    eye2 = np.eye(2, dtype=np.float64)
+
+    dt2 = float(dt) * float(dt)
+    q = float(accel_var) * np.array(
+        [
+            [dt2 * dt2 / 4.0, dt2 * float(dt) / 2.0],
+            [dt2 * float(dt) / 2.0, dt2],
+        ],
+        dtype=np.float64,
+    )
+
+    x_f = np.zeros((total, 2), dtype=np.float64)
+    p_f = np.zeros((total, 2, 2), dtype=np.float64)
+    x_p = np.zeros((total, 2), dtype=np.float64)
+    p_p = np.zeros((total, 2, 2), dtype=np.float64)
+
+    x = np.array([init_val, 0.0], dtype=np.float64)
+    p = np.eye(2, dtype=np.float64)
+    gap = 0
+
+    for k in range(total):
+        if k == 0:
+            x_pred = x
+            p_pred = p
+        else:
+            x_pred = f @ x
+            p_pred = f @ p @ f.T + q
+
+        x_p[k] = x_pred
+        p_p[k] = p_pred
+
+        zk = float(z[k]) if np.isfinite(z[k]) else float("nan")
+        wk = float(w[k]) if np.isfinite(w[k]) else 0.0
+        meas_ok = wk >= min_w and np.isfinite(zk)
+
+        if meas_ok:
+            if gap >= int(reset_gap_frames):
+                x_pred = np.array([zk, 0.0], dtype=np.float64)
+                p_pred = np.eye(2, dtype=np.float64)
+            gap = 0
+
+            r = float(r_base / max(wk * wk, 1e-6))
+            y = zk - float(h @ x_pred)
+            s = float(h @ p_pred @ h) + r
+            if s < 1e-12:
+                x = x_pred
+                p = p_pred
+            else:
+                k_gain = (p_pred @ h) / s
+                x = x_pred + k_gain * y
+                p = (eye2 - np.outer(k_gain, h)) @ p_pred
+        else:
+            gap += 1
+            x = x_pred
+            p = p_pred
+
+        x_f[k] = x
+        p_f[k] = p
+
+    x_s = np.zeros_like(x_f)
+    p_s = np.zeros_like(p_f)
+    x_s[total - 1] = x_f[total - 1]
+    p_s[total - 1] = p_f[total - 1]
+
+    for k in range(total - 2, -1, -1):
+        p_pred_next = p_p[k + 1]
+        det = float(p_pred_next[0, 0] * p_pred_next[1, 1] - p_pred_next[0, 1] * p_pred_next[1, 0])
+        if abs(det) < 1e-12:
+            x_s[k] = x_f[k]
+            p_s[k] = p_f[k]
+            continue
+        inv = (1.0 / det) * np.array(
+            [
+                [p_pred_next[1, 1], -p_pred_next[0, 1]],
+                [-p_pred_next[1, 0], p_pred_next[0, 0]],
+            ],
+            dtype=np.float64,
+        )
+        c = p_f[k] @ f.T @ inv
+        x_s[k] = x_f[k] + c @ (x_s[k + 1] - x_p[k + 1])
+        p_s[k] = p_f[k] + c @ (p_s[k + 1] - p_p[k + 1]) @ c.T
+
+    return x_s[:, 0].astype(np.float32, copy=False)
+
+
+def compute_motion_energy(
+    poses_seq: list[PosePacket | None],
+    *,
+    conf_threshold: float,
+) -> np.ndarray:
+    total = len(poses_seq)
+    vel = np.full((total,), np.nan, dtype=np.float32)
+    if total <= 1:
+        return vel
+
+    for idx in range(1, total):
+        prev_pose = poses_seq[idx - 1]
+        cur_pose = poses_seq[idx]
+        if prev_pose is None or cur_pose is None:
+            continue
+
+        prev_norm = center_and_scale(prev_pose.points)
+        cur_norm = center_and_scale(cur_pose.points)
+        prev_w = np.clip(np.minimum(prev_pose.vis, prev_pose.pres), 0.0, 1.0)
+        cur_w = np.clip(np.minimum(cur_pose.vis, cur_pose.pres), 0.0, 1.0)
+        weight = np.minimum(prev_w, cur_w)[POSE_SELECTED_INDICES]
+        valid = weight >= conf_threshold
+        if int(np.count_nonzero(valid)) < 6:
+            continue
+
+        delta = cur_norm[POSE_SELECTED_INDICES][valid] - prev_norm[POSE_SELECTED_INDICES][valid]
+        vel[idx] = float(np.mean(np.linalg.norm(delta, axis=1)))
+    return vel
+
+
+def pick_representative_index(
+    *,
+    scores: np.ndarray,
+    reliables: np.ndarray,
+    vel: np.ndarray,
+    fps: int,
+    stable_vel_quantile: float,
+    top_score_delta: float,
+    min_stable_seconds: float,
+    representative_percentile: float,
+) -> tuple[int, dict[str, Any]] | None:
+    total = int(scores.shape[0])
+    valid = np.isfinite(scores) & reliables
+    if int(np.count_nonzero(valid)) < 3:
+        return None
+
+    valid_scores = scores[valid]
+    s_max = float(np.max(valid_scores))
+    score_threshold = float(max(0.0, s_max - float(top_score_delta)))
+
+    valid_vel = vel[np.isfinite(vel) & valid]
+    if valid_vel.size > 0:
+        vel_threshold = float(np.quantile(valid_vel, float(stable_vel_quantile)))
+    else:
+        vel_threshold = float("inf")
+
+    stable = valid & (scores >= score_threshold) & np.isfinite(vel) & (vel <= vel_threshold)
+    min_len = max(3, int(round(float(min_stable_seconds) * float(max(fps, 1)))))
+
+    runs: list[tuple[int, int]] = []
+    idx = 0
+    while idx < total:
+        if not stable[idx]:
+            idx += 1
+            continue
+        end = idx + 1
+        while end < total and stable[end]:
+            end += 1
+        if (end - idx) >= min_len:
+            runs.append((idx, end))
+        idx = end
+
+    if not runs:
+        candidate_idxs = np.where(valid)[0]
+        k = min(7, candidate_idxs.size)
+        top = candidate_idxs[np.argsort(scores[candidate_idxs])[-k:]]
+        target = float(np.percentile(scores[top], float(representative_percentile)))
+        pick = int(top[np.argmin(np.abs(scores[top] - target))])
+        return pick, {
+            "mode": "fallback_topk",
+            "s_max": s_max,
+            "score_thr": score_threshold,
+            "vel_thr": vel_threshold,
+            "picked_index": pick,
+            "picked_score": float(scores[pick]),
+            "topk": int(k),
+        }
+
+    best_run: tuple[int, int] | None = None
+    best_med = -1.0
+    best_len = -1
+    for start, end in runs:
+        run_scores = scores[start:end]
+        finite_scores = run_scores[np.isfinite(run_scores)]
+        if finite_scores.size == 0:
+            continue
+        med = float(np.median(finite_scores))
+        run_len = int(end - start)
+        if med > best_med or (med == best_med and run_len > best_len):
+            best_med = med
+            best_len = run_len
+            best_run = (start, end)
+
+    if best_run is None:
+        return None
+
+    start, end = best_run
+    seg = np.arange(start, end, dtype=np.int32)
+    seg_scores = scores[seg]
+    target = float(np.percentile(seg_scores, float(representative_percentile)))
+    pick = int(seg[np.argmin(np.abs(seg_scores - target))])
+
+    return pick, {
+        "mode": "stable_segment",
+        "segment_start": int(start),
+        "segment_end": int(end),
+        "segment_len": int(end - start),
+        "s_max": s_max,
+        "score_thr": score_threshold,
+        "vel_thr": vel_threshold,
+        "representative_percentile": float(representative_percentile),
+        "picked_index": pick,
+        "picked_score": float(scores[pick]),
+        "segment_score_median": float(np.median(seg_scores)),
+        "segment_score_max": float(np.max(seg_scores)),
+    }
 
 
 def swap_left_right(values: np.ndarray) -> np.ndarray:

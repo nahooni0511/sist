@@ -33,6 +33,13 @@ object WorkoutAppCatalog {
             fallbackImageResId = R.drawable.bg_workout_card_fallback_3
         ),
         WorkoutAppCard(
+            packageName = "com.sistrun.volleyball",
+            name = "VOLLEYBALL SCOREBOARD",
+            description = "배구 스코어 보드를 실행하는 앱입니다.",
+            imageUrl = "file:///android_asset/volleyball.jpeg",
+            fallbackImageResId = R.drawable.bg_workout_card_fallback_2
+        ),
+        WorkoutAppCard(
             packageName = "com.sistrun.integratetest",
             name = "INTEGRATE TEST",
             description = "스쿼트/멀리뛰기 측정 연동과 측정값 표시를 확인하는 테스트 앱입니다.",

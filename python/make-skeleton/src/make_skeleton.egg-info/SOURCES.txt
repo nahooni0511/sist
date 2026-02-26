@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+src/make_skeleton/__init__.py
+src/make_skeleton/__main__.py
+src/make_skeleton/pipeline.py
+src/make_skeleton.egg-info/PKG-INFO
+src/make_skeleton.egg-info/SOURCES.txt
+src/make_skeleton.egg-info/dependency_links.txt
+src/make_skeleton.egg-info/entry_points.txt
+src/make_skeleton.egg-info/requires.txt
+src/make_skeleton.egg-info/top_level.txt

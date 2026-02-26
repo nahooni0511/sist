@@ -1,0 +1,2 @@
+[console_scripts]
+make-skeleton = make_skeleton.__main__:main

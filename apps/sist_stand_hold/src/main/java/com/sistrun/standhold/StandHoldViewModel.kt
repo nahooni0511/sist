@@ -41,6 +41,7 @@ data class StandHoldUiState(
     val countdownSec: Int? = null,
     val currentScore: Float? = null,
     val bestScore: Float? = null,
+    val isAnalyzing: Boolean = false,
     val showResult: Boolean = false,
     val resultReference: Bitmap? = null,
     val resultBestFrame: Bitmap? = null,
@@ -157,6 +158,7 @@ class StandHoldViewModel : ViewModel() {
             it.copy(
                 status = "$host:$port 연결 중...",
                 showResult = false,
+                isAnalyzing = false,
                 countdownSec = null,
                 currentScore = null,
                 bestScore = null,
@@ -196,6 +198,8 @@ class StandHoldViewModel : ViewModel() {
                             state.copy(
                                 isConnected = false,
                                 status = "AI BOX 연결 종료",
+                                isAnalyzing = false,
+                                showResult = false,
                                 countdownSec = null,
                             )
                         }
@@ -226,6 +230,8 @@ class StandHoldViewModel : ViewModel() {
             it.copy(
                 isConnected = false,
                 status = status,
+                isAnalyzing = false,
+                showResult = false,
                 countdownSec = null,
                 currentScore = null,
                 bestScore = null,
@@ -289,6 +295,7 @@ class StandHoldViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 showResult = false,
+                isAnalyzing = false,
                 countdownSec = DEFAULT_SESSION_SECONDS,
                 currentScore = null,
                 bestScore = null,
@@ -327,7 +334,6 @@ class StandHoldViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         liveFrame = bitmap ?: it.liveFrame,
-                        currentScore = message.currentScore ?: it.currentScore,
                     )
                 }
             }
@@ -340,6 +346,7 @@ class StandHoldViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         showResult = false,
+                        isAnalyzing = false,
                         countdownSec = message.countdownSec,
                         status = "${message.countdownSec}초 동안 자세를 유지하세요.",
                     )
@@ -351,8 +358,14 @@ class StandHoldViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         countdownSec = if (remainingSec > 0) remainingSec else null,
-                        currentScore = message.currentScore ?: it.currentScore,
-                        bestScore = message.bestScore ?: it.bestScore,
+                        isAnalyzing = remainingSec <= 0,
+                        currentScore = null,
+                        bestScore = null,
+                        status = if (remainingSec > 0) {
+                            "${remainingSec}초 동안 자세를 유지하세요."
+                        } else {
+                            "촬영이 완료되어 결과를 분석하는 중입니다..."
+                        },
                     )
                 }
             }
@@ -364,6 +377,7 @@ class StandHoldViewModel : ViewModel() {
                 _uiState.update {
                     it.copy(
                         showResult = true,
+                        isAnalyzing = false,
                         countdownSec = null,
                         resultBestFrame = bestFrame,
                         resultReference = referenceFrame ?: it.resultReference,
@@ -377,7 +391,12 @@ class StandHoldViewModel : ViewModel() {
             }
 
             is StreamMessage.Error -> {
-                _uiState.update { it.copy(status = "서버 오류: ${message.message}") }
+                _uiState.update {
+                    it.copy(
+                        status = "서버 오류: ${message.message}",
+                        isAnalyzing = false,
+                    )
+                }
             }
 
             is StreamMessage.Unknown -> {

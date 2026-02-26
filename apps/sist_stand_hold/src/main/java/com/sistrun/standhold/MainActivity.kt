@@ -143,15 +143,14 @@ class MainActivity : AppCompatActivity() {
 
         binding.poseOverlay.setLandmarks(state.landmarks)
 
-        binding.countdownTextView.isVisible = !state.showResult && state.countdownSec != null
+        val showMeasurement = !state.showResult && !state.isAnalyzing
+        binding.countdownTextView.isVisible = showMeasurement && state.countdownSec != null
         if (state.countdownSec != null) {
             binding.countdownTextView.text = state.countdownSec.toString()
         }
 
-        binding.currentScoreTextView.text = "Score: ${state.currentScore?.let(::formatScore) ?: "-"}"
-        binding.bestScoreTextView.text = "Best: ${state.bestScore?.let(::formatScore) ?: "-"}"
-
-        binding.measurementContainer.isVisible = !state.showResult
+        binding.measurementContainer.isVisible = showMeasurement
+        binding.analyzingContainer.isVisible = state.isAnalyzing
         binding.resultContainer.isVisible = state.showResult
 
         if (state.showResult) {

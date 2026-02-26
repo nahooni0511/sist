@@ -17,4 +17,6 @@
     <string name="waiting_status">AI BOX 연결 대기</string>
     <string name="no_result_feedback">피드백이 여기에 표시됩니다.</string>
     <string name="countdown_placeholder">10</string>
+    <string name="analyzing_result">결과 분석 중입니다...</string>
+    <string name="analyzing_result_sub">잠시만 기다려 주세요.</string>
 </resources>

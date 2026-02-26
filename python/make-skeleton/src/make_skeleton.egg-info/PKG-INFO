@@ -1,0 +1,67 @@
+Metadata-Version: 2.4
+Name: make-skeleton
+Version: 0.1.0
+Summary: Track body joints with MediaPipe Pose and overlay them on an input video.
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: opencv-python>=4.9.0
+Requires-Dist: mediapipe>=0.10.14
+
+# make-skeleton
+
+입력 동영상을 MediaPipe Pose로 분석해서 관절(스켈레톤)과 관절 좌표/신뢰도 값을 원본 영상 위에 오버레이해 새 영상으로 저장합니다.
+
+## 1) 설치
+
+```bash
+cd /Users/nahooni0511/workspace/sistrun-hub/python/make-skeleton
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -e .
+```
+
+## 2) 실행
+
+### 기본 실행
+
+```bash
+make-skeleton \
+  --input /absolute/path/input.mp4 \
+  --output /absolute/path/output.mp4
+```
+
+출력 경로를 생략하면 입력 파일명 기준으로 자동 생성됩니다.
+
+- 예) `input.mp4` -> `input_skeleton.mp4`
+
+### 랜드마크 CSV 같이 저장
+
+```bash
+make-skeleton \
+  --input /absolute/path/input.mp4 \
+  --output /absolute/path/output.mp4 \
+  --landmarks-csv /absolute/path/landmarks.csv
+```
+
+CSV는 프레임별 33개 랜드마크의 `x/y/z/visibility` 값을 저장합니다.
+
+`mediapipe` 환경에 따라 내부적으로 두 가지 백엔드를 자동 선택합니다.
+
+- `mediapipe.solutions.pose` 사용 가능 시 해당 API 사용
+- `mediapipe.tasks.pose_landmarker`만 가능한 환경(Python 3.13 등)에서는 tasks 백엔드 사용
+  - 기본 모델(`pose_landmarker_full.task`)이 없으면 `~/.cache/make-skeleton/`에 자동 다운로드
+
+## 3) 주요 옵션
+
+- `--model-complexity {0,1,2}`: Pose 모델 복잡도 (기본 `1`)
+- `--min-detection-confidence`: 최소 탐지 신뢰도 (기본 `0.5`)
+- `--min-tracking-confidence`: 최소 추적 신뢰도 (기본 `0.5`)
+- `--pose-task-model`: tasks 백엔드에서 사용할 `.task` 모델 경로 (옵션)
+- `--max-frames`: 디버깅용 최대 처리 프레임 수
+
+## 4) 모듈로 실행
+
+```bash
+PYTHONPATH=src python3 -m make_skeleton --input /absolute/path/input.mp4
+```

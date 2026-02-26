@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "make-skeleton"
+version = "0.1.0"
+description = "Track body joints with MediaPipe Pose and overlay them on an input video."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "opencv-python>=4.9.0",
+  "mediapipe>=0.10.14",
+]
+
+[project.scripts]
+make-skeleton = "make_skeleton.__main__:main"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]

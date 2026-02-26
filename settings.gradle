@@ -33,3 +33,6 @@ project(":sist_stand_hold").projectDir = file("apps/sist_stand_hold")
 
 include(":integrate_test")
 project(":integrate_test").projectDir = file("apps/integrate_test")
+
+include(":volleyball")
+project(":volleyball").projectDir = file("apps/volleyball")
