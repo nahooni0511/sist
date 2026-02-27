@@ -22,12 +22,6 @@ project(":launcher").projectDir = file("apps/launcher")
 include(":sistrun-dance")
 project(":sistrun-dance").projectDir = file("apps/sistrun-dance")
 
-include(":manager")
-project(":manager").projectDir = file("apps/manager")
-
-include(":core_dpc")
-project(":core_dpc").projectDir = file("apps/core_dpc")
-
 include(":sist_stand_hold")
 project(":sist_stand_hold").projectDir = file("apps/sist_stand_hold")
 

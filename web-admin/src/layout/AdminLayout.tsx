@@ -19,6 +19,9 @@ export default function AdminLayout() {
           <NavLink to="/devices" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
             기기관리
           </NavLink>
+          <NavLink to="/store" className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}>
+            앱스토어 모니터
+          </NavLink>
         </nav>
       </aside>
 

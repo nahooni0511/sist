@@ -9,7 +9,11 @@ import {
   DeviceCommandRecord,
   DeviceItem,
   DeviceListFilters,
-  NextDevicePreview
+  NextDevicePreview,
+  StoreDeviceDetail,
+  StoreDeviceSummary,
+  StoreSyncLog,
+  StoreUpdateEvent
 } from "../types/admin";
 
 class ApiError extends Error {
@@ -191,6 +195,114 @@ function mapCommand(item: JsonRecord): DeviceCommandRecord {
     updatedAt: toIso(item.updatedAt),
     resultMessage: safeText(item.resultMessage || item.message) || undefined,
     resultCode: Number.isFinite(Number(item.resultCode)) ? Number(item.resultCode) : undefined
+  };
+}
+
+function parseRecord(value: unknown): Record<string, unknown> | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function mapStoreDeviceSummary(item: JsonRecord): StoreDeviceSummary {
+  return {
+    deviceId: safeText(item.deviceId || item.device_id),
+    deviceName: safeText(item.deviceName || item.device_name) || undefined,
+    modelName: safeText(item.modelName || item.model_name) || undefined,
+    platform: safeText(item.platform) || undefined,
+    osVersion: safeText(item.osVersion || item.os_version) || undefined,
+    appStoreVersion: safeText(item.appStoreVersion || item.app_store_version) || undefined,
+    ipAddress: safeText(item.ipAddress || item.ip_address) || undefined,
+    lastSyncedAt: optionalIso(item.lastSyncedAt || item.last_synced_at),
+    installedPackageCount: safeNumber(item.installedPackageCount || item.installed_package_count, 0),
+    availableUpdateCount: safeNumber(item.availableUpdateCount || item.available_update_count, 0),
+    latestEventAt: optionalIso(item.latestEventAt || item.latest_event_at),
+    latestEventType: safeText(item.latestEventType || item.latest_event_type) || undefined,
+    latestEventStatus: safeText(item.latestEventStatus || item.latest_event_status) || undefined
+  };
+}
+
+function mapStoreSyncLog(item: JsonRecord): StoreSyncLog {
+  return {
+    id: safeText(item.id),
+    deviceId: safeText(item.deviceId || item.device_id),
+    syncedAt: toIso(item.syncedAt || item.synced_at),
+    packageCount: safeNumber(item.packageCount || item.package_count, 0),
+    updateCount: safeNumber(item.updateCount || item.update_count, 0),
+    appStoreVersion: safeText(item.appStoreVersion || item.app_store_version) || undefined,
+    ipAddress: safeText(item.ipAddress || item.ip_address) || undefined
+  };
+}
+
+function mapStoreUpdateEvent(item: JsonRecord): StoreUpdateEvent {
+  const statusRaw = safeText(item.status).toUpperCase();
+  const status: StoreUpdateEvent["status"] =
+    statusRaw === "SUCCESS" || statusRaw === "FAILED" ? statusRaw : "INFO";
+
+  return {
+    id: safeText(item.id),
+    deviceId: safeText(item.deviceId || item.device_id),
+    packageName: safeText(item.packageName || item.package_name),
+    appId: safeText(item.appId || item.app_id) || undefined,
+    releaseId: safeText(item.releaseId || item.release_id) || undefined,
+    targetVersionName: safeText(item.targetVersionName || item.target_version_name) || undefined,
+    targetVersionCode: optionalNumber(item.targetVersionCode || item.target_version_code),
+    eventType: safeText(item.eventType || item.event_type),
+    status,
+    message: safeText(item.message) || undefined,
+    metadata: parseRecord(item.metadata),
+    createdAt: toIso(item.createdAt || item.created_at)
+  };
+}
+
+function mapStoreDeviceDetail(item: JsonRecord): StoreDeviceDetail {
+  const summary = mapStoreDeviceSummary(item);
+  const packages = Array.isArray(item.packages)
+    ? item.packages
+        .map((pkg) => {
+          const raw = pkg as JsonRecord;
+          const packageName = safeText(raw.packageName || raw.package_name).trim();
+          const versionCode = optionalNumber(raw.versionCode || raw.version_code);
+          if (!packageName || typeof versionCode !== "number") {
+            return null;
+          }
+          return {
+            packageName,
+            versionCode,
+            versionName: safeText(raw.versionName || raw.version_name) || undefined,
+            syncedAt: optionalIso(raw.syncedAt || raw.synced_at)
+          };
+        })
+        .filter((pkg): pkg is NonNullable<typeof pkg> => pkg !== null)
+    : [];
+
+  const recentSyncs = Array.isArray(item.recentSyncs || item.recent_syncs)
+    ? ((item.recentSyncs || item.recent_syncs) as JsonRecord[]).map(mapStoreSyncLog)
+    : [];
+
+  const recentEvents = Array.isArray(item.recentEvents || item.recent_events)
+    ? ((item.recentEvents || item.recent_events) as JsonRecord[]).map(mapStoreUpdateEvent)
+    : [];
+
+  return {
+    ...summary,
+    packages,
+    recentSyncs,
+    recentEvents
   };
 }
 
@@ -570,6 +682,52 @@ export function createAdminApi(config: AdminApiConfig) {
     return mapDevice((adminRes.device as JsonRecord | undefined) ?? adminRes);
   }
 
+  async function listStoreDevices(filters: { query?: string } = {}): Promise<StoreDeviceSummary[]> {
+    const query = new URLSearchParams();
+    if (filters.query) {
+      query.set("query", filters.query);
+    }
+
+    const adminRes = await request(`/admin/store/devices?${query.toString()}`);
+    const list =
+      ((adminRes.devices as JsonRecord[] | undefined) ??
+        (adminRes.items as JsonRecord[] | undefined) ??
+        []) as JsonRecord[];
+
+    return list
+      .map(mapStoreDeviceSummary)
+      .sort((a, b) => Date.parse(b.lastSyncedAt || "") - Date.parse(a.lastSyncedAt || ""));
+  }
+
+  async function getStoreDevice(deviceId: string): Promise<StoreDeviceDetail> {
+    const adminRes = await request(`/admin/store/devices/${encodeURIComponent(deviceId)}`);
+    return mapStoreDeviceDetail((adminRes.device as JsonRecord | undefined) ?? adminRes);
+  }
+
+  async function listStoreEvents(filters: {
+    deviceId?: string;
+    packageName?: string;
+    limit?: number;
+  } = {}): Promise<StoreUpdateEvent[]> {
+    const query = new URLSearchParams();
+    if (filters.deviceId) {
+      query.set("deviceId", filters.deviceId);
+    }
+    if (filters.packageName) {
+      query.set("packageName", filters.packageName);
+    }
+    if (typeof filters.limit === "number") {
+      query.set("limit", String(filters.limit));
+    }
+
+    const adminRes = await request(`/admin/store/events?${query.toString()}`);
+    const list =
+      ((adminRes.events as JsonRecord[] | undefined) ??
+        (adminRes.items as JsonRecord[] | undefined) ??
+        []) as JsonRecord[];
+    return list.map(mapStoreUpdateEvent);
+  }
+
   async function createDevice(input: CreateDeviceInput): Promise<DeviceItem> {
     const adminRes = await request("/admin/devices", {
       method: "POST",
@@ -696,6 +854,9 @@ export function createAdminApi(config: AdminApiConfig) {
     getApk,
     listDevices,
     getDevice,
+    listStoreDevices,
+    getStoreDevice,
+    listStoreEvents,
     createDevice,
     previewNextDevice,
     createDeviceCommand,

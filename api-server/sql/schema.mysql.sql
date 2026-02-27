@@ -85,6 +85,64 @@ CREATE TABLE IF NOT EXISTS commands (
   KEY idx_commands_status_created (status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE IF NOT EXISTS store_devices (
+  device_id VARCHAR(120) NOT NULL,
+  device_name VARCHAR(160) NULL,
+  model_name VARCHAR(160) NULL,
+  platform VARCHAR(40) NULL,
+  os_version VARCHAR(60) NULL,
+  app_store_version VARCHAR(60) NULL,
+  ip_address VARCHAR(64) NULL,
+  last_synced_at VARCHAR(30) NULL,
+  created_at VARCHAR(30) NOT NULL,
+  updated_at VARCHAR(30) NOT NULL,
+  PRIMARY KEY (device_id),
+  KEY idx_store_devices_last_synced (last_synced_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS store_device_packages (
+  device_id VARCHAR(120) NOT NULL,
+  package_name VARCHAR(255) NOT NULL,
+  version_name VARCHAR(100) NULL,
+  version_code INT NOT NULL,
+  synced_at VARCHAR(30) NOT NULL,
+  PRIMARY KEY (device_id, package_name),
+  KEY idx_store_device_packages_package (package_name),
+  CONSTRAINT fk_store_device_packages_device FOREIGN KEY (device_id) REFERENCES store_devices(device_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS store_sync_logs (
+  id CHAR(36) NOT NULL,
+  device_id VARCHAR(120) NOT NULL,
+  synced_at VARCHAR(30) NOT NULL,
+  package_count INT NOT NULL,
+  update_count INT NOT NULL DEFAULT 0,
+  app_store_version VARCHAR(60) NULL,
+  ip_address VARCHAR(64) NULL,
+  PRIMARY KEY (id),
+  KEY idx_store_sync_logs_device_synced (device_id, synced_at),
+  CONSTRAINT fk_store_sync_logs_device FOREIGN KEY (device_id) REFERENCES store_devices(device_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS store_update_events (
+  id CHAR(36) NOT NULL,
+  device_id VARCHAR(120) NOT NULL,
+  package_name VARCHAR(255) NOT NULL,
+  app_id VARCHAR(100) NULL,
+  release_id CHAR(36) NULL,
+  target_version_name VARCHAR(100) NULL,
+  target_version_code INT NULL,
+  event_type VARCHAR(40) NOT NULL,
+  status VARCHAR(20) NOT NULL,
+  message TEXT NULL,
+  metadata JSON NULL,
+  created_at VARCHAR(30) NOT NULL,
+  PRIMARY KEY (id),
+  KEY idx_store_update_events_device_created (device_id, created_at),
+  KEY idx_store_update_events_package_created (package_name, created_at),
+  CONSTRAINT fk_store_update_events_device FOREIGN KEY (device_id) REFERENCES store_devices(device_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 INSERT IGNORE INTO settings (setting_key, setting_value)
 VALUES
   ('API_BASE_URL', 'http://10.0.2.2:4000'),

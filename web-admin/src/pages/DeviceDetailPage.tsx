@@ -167,7 +167,7 @@ export default function DeviceDetailPage() {
 
       <section className="panel">
         <h3>원격 운영 명령 (Top 10)</h3>
-        <p className="muted">명령은 api-server에 생성되고 core_dpc가 실행합니다.</p>
+        <p className="muted">명령은 api-server 큐에 저장되고 단말 에이전트가 순차 실행합니다.</p>
 
         <div className="command-grid">
           <form className="mini-form" onSubmit={onRestartApp}>

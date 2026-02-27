@@ -18,6 +18,17 @@
 - `GET /admin/devices/:deviceId/commands?limit=50`
 - `GET /admin/commands/:commandId`
 
+## 4) Store Background Sync
+- `GET /admin/store/devices?query=`
+- `GET /admin/store/devices/:deviceId`
+- `GET /admin/store/events?deviceId=&packageName=&limit=`
+
+## 5) Store Client Sync
+- `POST /api/store/devices/sync`
+  - body: `{ deviceId, deviceName?, modelName?, platform?, osVersion?, appStoreVersion?, packages[] }`
+- `POST /api/store/devices/:deviceId/events`
+  - body: `{ packageName, eventType, status?, message?, ... }`
+
 ---
 
 ## Compatibility Adapter (현재 api-server 호환)

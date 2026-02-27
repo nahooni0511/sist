@@ -16,7 +16,10 @@ import {
   CommandType,
   CreateDeviceInput,
   DeviceRecord,
-  MySqlDb
+  MySqlDb,
+  StoreDevicePackageVersion,
+  StoreDeviceSyncInput,
+  StoreUpdateEventStatus
 } from "./db.js";
 import { MinioObjectStorage } from "./object-storage.js";
 
@@ -141,6 +144,96 @@ const adminRefreshSchema = z.object({
   refreshToken: z.string().min(1)
 });
 
+const adminApkListQuerySchema = z.object({
+  query: z.string().optional(),
+  packageName: z.string().optional(),
+  latestOnly: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((value) => {
+      if (typeof value === "boolean") {
+        return value;
+      }
+      if (typeof value === "string") {
+        return value.toLowerCase() === "true";
+      }
+      return false;
+    })
+});
+
+const adminApkUploadSchema = z.object({
+  appId: z.string().optional(),
+  packageName: z.string().optional(),
+  displayName: z.string().optional(),
+  versionName: z.string().optional(),
+  versionCode: z.coerce.number().int().positive().optional(),
+  releaseNote: z.string().optional(),
+  changelog: z.string().optional(),
+  autoUpdate: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((value) => {
+      if (typeof value === "boolean") {
+        return value;
+      }
+      if (typeof value === "string") {
+        return value.toLowerCase() === "true";
+      }
+      return false;
+    })
+});
+
+const storeSyncSchema = z.object({
+  deviceId: z.string().min(1),
+  deviceName: z.string().optional(),
+  modelName: z.string().optional(),
+  platform: z.string().optional(),
+  osVersion: z.string().optional(),
+  appStoreVersion: z.string().optional(),
+  ipAddress: z.string().optional(),
+  packages: z
+    .array(
+      z.object({
+        packageName: z.string().min(1),
+        versionCode: z.number().int().nonnegative(),
+        versionName: z.string().optional()
+      })
+    )
+    .default([])
+});
+
+const storeEventTypeValues = [
+  "CHECK_UPDATES",
+  "DOWNLOAD_STARTED",
+  "DOWNLOAD_FINISHED",
+  "INSTALL_REQUESTED",
+  "INSTALL_SUCCESS",
+  "INSTALL_FAILED",
+  "SYNC_COMPLETED"
+] as const;
+
+const storeEventSchema = z.object({
+  packageName: z.string().min(1),
+  appId: z.string().optional(),
+  releaseId: z.string().optional(),
+  targetVersionName: z.string().optional(),
+  targetVersionCode: z.number().int().nonnegative().optional(),
+  eventType: z.enum(storeEventTypeValues),
+  status: z.enum(["INFO", "SUCCESS", "FAILED"]).default("INFO"),
+  message: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+const adminStoreDeviceListQuerySchema = z.object({
+  query: z.string().optional()
+});
+
+const adminStoreEventListQuerySchema = z.object({
+  deviceId: z.string().optional(),
+  packageName: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(500).optional().default(100)
+});
+
 function issueAdminToken(prefix: "atk" | "rtk"): string {
   return `${prefix}_${crypto.randomBytes(32).toString("hex")}`;
 }
@@ -250,6 +343,158 @@ function toLatestAppView(entry: AppEntry) {
   };
 }
 
+function toReleaseView(release: AppRelease) {
+  return {
+    ...release,
+    sha256: release.sha256 ?? "",
+    downloadUrl: buildDownloadUrl(release.fileName)
+  };
+}
+
+function toAdminApkItem(entry: AppEntry, release: AppRelease) {
+  return {
+    id: release.id,
+    appId: entry.appId,
+    packageName: release.packageName || entry.packageName,
+    versionName: release.versionName,
+    versionCode: release.versionCode,
+    releaseNote: release.changelog,
+    sha256: release.sha256 ?? "",
+    fileSize: release.fileSize,
+    uploadedAt: release.uploadedAt,
+    downloadUrl: buildDownloadUrl(release.fileName)
+  };
+}
+
+function toAdminApkItemFromRelease(release: AppRelease) {
+  return {
+    id: release.id,
+    appId: release.appId,
+    packageName: release.packageName,
+    versionName: release.versionName,
+    versionCode: release.versionCode,
+    releaseNote: release.changelog,
+    sha256: release.sha256 ?? "",
+    fileSize: release.fileSize,
+    uploadedAt: release.uploadedAt,
+    downloadUrl: buildDownloadUrl(release.fileName)
+  };
+}
+
+function toStoreUpdateView(release: AppRelease, installedVersionCode: number) {
+  return {
+    appId: release.appId,
+    releaseId: release.id,
+    displayName: release.displayName,
+    packageName: release.packageName,
+    installedVersionCode,
+    targetVersionCode: release.versionCode,
+    targetVersionName: release.versionName,
+    changelog: release.changelog,
+    sha256: release.sha256 ?? "",
+    fileSize: release.fileSize,
+    uploadedAt: release.uploadedAt,
+    autoUpdate: release.autoUpdate,
+    downloadUrl: buildDownloadUrl(release.fileName)
+  };
+}
+
+function findAppEntryByIdOrPackage(entries: AppEntry[], appIdOrPackageName: string): AppEntry | null {
+  const normalized = appIdOrPackageName.trim();
+  if (!normalized) {
+    return null;
+  }
+  const byAppId = entries.find((entry) => entry.appId === normalized);
+  if (byAppId) {
+    return byAppId;
+  }
+  return entries.find((entry) => entry.packageName === normalized) ?? null;
+}
+
+function derivePackageNameFromFileName(fileName: string): string {
+  const raw = fileName.replace(/\.apk$/i, "").trim();
+  const cleaned = raw
+    .replace(/\s+/g, ".")
+    .replace(/[^a-zA-Z0-9_.-]/g, "")
+    .replace(/\.+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .toLowerCase();
+
+  if (cleaned.length >= 3 && cleaned.includes(".")) {
+    return cleaned;
+  }
+
+  const fallback = cleaned || `uploaded.${Date.now()}`;
+  return `app.${fallback.replace(/[^a-z0-9.-]/g, "").replace(/\.+/g, ".")}`;
+}
+
+function deriveAppIdFromPackageName(packageName: string): string {
+  const normalized = packageName
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, "-")
+    .replace(/[.]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || `app-${Date.now()}`;
+}
+
+type UploadInput = {
+  appId: string;
+  packageName: string;
+  displayName: string;
+  versionName: string;
+  versionCode: number;
+  changelog: string;
+  autoUpdate: boolean;
+};
+
+async function persistUploadedRelease(file: Express.Multer.File, payload: UploadInput) {
+  const ext = path.extname(file.originalname).toLowerCase() || ".apk";
+  const safeFileName = `${payload.appId}-${payload.versionCode}-${Date.now()}${ext}`;
+  const fileBuffer = fs.readFileSync(file.path);
+  const sha256 = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+  const now = nowIso();
+
+  const release: AppRelease = {
+    id: uuidv4(),
+    appId: payload.appId,
+    packageName: payload.packageName,
+    displayName: payload.displayName,
+    versionName: payload.versionName,
+    versionCode: payload.versionCode,
+    changelog: payload.changelog,
+    autoUpdate: payload.autoUpdate,
+    fileName: safeFileName,
+    sha256,
+    fileSize: file.size,
+    uploadedAt: now
+  };
+
+  try {
+    await objectStorage.uploadFile({
+      objectName: safeFileName,
+      localPath: file.path,
+      contentType: file.mimetype || "application/vnd.android.package-archive"
+    });
+    await db.saveRelease(release, now);
+  } catch (error) {
+    try {
+      await objectStorage.removeObject(safeFileName);
+    } catch {
+      // ignore cleanup error
+    }
+    throw error;
+  } finally {
+    try {
+      fs.unlinkSync(file.path);
+    } catch {
+      // ignore cleanup error
+    }
+  }
+
+  return release;
+}
+
 function toAdminDeviceView(device: DeviceRecord) {
   const lastSeenRaw = device.lastSeenAt ?? "";
   const seenMs = Date.parse(lastSeenRaw);
@@ -296,6 +541,16 @@ function routeParam(value: string | string[] | undefined): string {
     return value[0] ?? "";
   }
   return value ?? "";
+}
+
+function resolveClientIp(req: Request): string {
+  const forwardedRaw = req.header("x-forwarded-for") ?? "";
+  const forwarded = forwardedRaw
+    .split(",")
+    .map((token) => token.trim())
+    .find((token) => token.length > 0);
+
+  return forwarded ?? req.ip ?? req.socket.remoteAddress ?? "";
 }
 
 function buildDownloadUrl(fileName: string): string {
@@ -511,6 +766,127 @@ app.get(
   })
 );
 
+app.get(
+  "/admin/apks",
+  asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    const parsed = adminApkListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const query = parsed.data.query?.trim().toLowerCase() ?? "";
+    const packageFilter = parsed.data.packageName?.trim().toLowerCase() ?? "";
+    const entries = await db.getApps();
+
+    const items = entries
+      .flatMap((entry) => {
+        const releases = [...entry.releases].sort((a, b) => b.versionCode - a.versionCode);
+        if (parsed.data.latestOnly) {
+          const latest = releases[0];
+          return latest ? [toAdminApkItem(entry, latest)] : [];
+        }
+        return releases.map((release) => toAdminApkItem(entry, release));
+      })
+      .filter((item) => {
+        const queryMatch =
+          !query ||
+          item.packageName.toLowerCase().includes(query) ||
+          String(item.appId ?? "").toLowerCase().includes(query);
+        const packageMatch = !packageFilter || item.packageName.toLowerCase().includes(packageFilter);
+        return queryMatch && packageMatch;
+      })
+      .sort((a, b) => Date.parse(b.uploadedAt) - Date.parse(a.uploadedAt));
+
+    res.json({ items });
+  })
+);
+
+app.get(
+  "/admin/apks/:apkId",
+  asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    const apkId = routeParam(req.params.apkId).trim();
+    if (!apkId) {
+      res.status(400).json({ message: "apkId 파라미터가 필요합니다." });
+      return;
+    }
+
+    const entries = await db.getApps();
+    const entry = findAppEntryByIdOrPackage(entries, apkId);
+    if (!entry) {
+      res.status(404).json({ message: "APK not found" });
+      return;
+    }
+
+    const versions = [...entry.releases]
+      .sort((a, b) => b.versionCode - a.versionCode)
+      .map((release) => toAdminApkItem(entry, release));
+
+    res.json({
+      apk: versions[0] ?? null,
+      versions
+    });
+  })
+);
+
+app.post(
+  "/admin/apks/upload",
+  upload.single("apk"),
+  asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ message: "apk 파일이 필요합니다." });
+      return;
+    }
+
+    const parsed = adminApkUploadSchema.safeParse(req.body);
+    if (!parsed.success) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch {
+        // ignore cleanup error
+      }
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const data = parsed.data;
+    const packageName = data.packageName?.trim() || derivePackageNameFromFileName(req.file.originalname);
+    const appId = data.appId?.trim() || deriveAppIdFromPackageName(packageName);
+    const displayName = data.displayName?.trim() || packageName;
+    const versionName = data.versionName?.trim() || "1.0.0";
+    const versionCode = data.versionCode ?? 1;
+    const changelog = (data.releaseNote ?? data.changelog ?? "").trim();
+
+    const release = await persistUploadedRelease(req.file, {
+      appId,
+      packageName,
+      displayName,
+      versionName,
+      versionCode,
+      changelog,
+      autoUpdate: data.autoUpdate
+    });
+
+    res.status(201).json({
+      message: "업로드 완료",
+      apk: toAdminApkItemFromRelease(release),
+      release: toReleaseView(release)
+    });
+  })
+);
+
 app.get("/api/files/:fileName/download", proxyDownloadHandler);
 app.get("/downloads/:fileName", proxyDownloadHandler);
 
@@ -573,55 +949,19 @@ app.post(
     }
 
     const payload = parsed.data;
-    const ext = path.extname(req.file.originalname).toLowerCase() || ".apk";
-    const safeFileName = `${payload.appId}-${payload.versionCode}-${Date.now()}${ext}`;
-    const fileBuffer = fs.readFileSync(req.file.path);
-    const sha256 = crypto.createHash("sha256").update(fileBuffer).digest("hex");
-
-    const now = nowIso();
-    const release: AppRelease = {
-      id: uuidv4(),
+    const release = await persistUploadedRelease(req.file, {
       appId: payload.appId,
       packageName: payload.packageName,
       displayName: payload.displayName,
       versionName: payload.versionName,
       versionCode: payload.versionCode,
       changelog: payload.changelog,
-      autoUpdate: payload.autoUpdate,
-      fileName: safeFileName,
-      sha256,
-      fileSize: req.file.size,
-      uploadedAt: now
-    };
-
-    try {
-      await objectStorage.uploadFile({
-        objectName: safeFileName,
-        localPath: req.file.path,
-        contentType: req.file.mimetype || "application/vnd.android.package-archive"
-      });
-      await db.saveRelease(release, now);
-    } catch (error) {
-      try {
-        await objectStorage.removeObject(safeFileName);
-      } catch {
-        // ignore cleanup error
-      }
-      throw error;
-    } finally {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch {
-        // ignore cleanup error
-      }
-    }
+      autoUpdate: payload.autoUpdate
+    });
 
     res.status(201).json({
       message: "업로드 완료",
-      release: {
-        ...release,
-        downloadUrl: buildDownloadUrl(release.fileName)
-      }
+      release: toReleaseView(release)
     });
   })
 );
@@ -725,6 +1065,167 @@ app.post(
       settings,
       updates
     });
+  })
+);
+
+app.post(
+  "/api/store/devices/sync",
+  asyncHandler(async (req, res) => {
+    const parsed = storeSyncSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const payload = parsed.data;
+    const packageMap = new Map(payload.packages.map((item) => [item.packageName, item.versionCode]));
+    const latestReleases = await db.getLatestReleases();
+    const now = nowIso();
+
+    const updates = latestReleases
+      .map((latest) => {
+        const installedVersion = packageMap.get(latest.packageName) ?? -1;
+        if (latest.versionCode <= installedVersion) {
+          return null;
+        }
+        return toStoreUpdateView(latest, installedVersion);
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null)
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+    const syncInput: StoreDeviceSyncInput = {
+      deviceId: payload.deviceId.trim(),
+      deviceName: payload.deviceName?.trim() || undefined,
+      modelName: payload.modelName?.trim() || undefined,
+      platform: payload.platform?.trim() || undefined,
+      osVersion: payload.osVersion?.trim() || undefined,
+      appStoreVersion: payload.appStoreVersion?.trim() || undefined,
+      ipAddress: payload.ipAddress?.trim() || resolveClientIp(req),
+      syncedAt: now,
+      availableUpdateCount: updates.length,
+      packages: payload.packages.map(
+        (item): StoreDevicePackageVersion => ({
+          packageName: item.packageName.trim(),
+          versionCode: item.versionCode,
+          versionName: item.versionName?.trim() || undefined,
+          syncedAt: now
+        })
+      )
+    };
+
+    await db.saveStoreDeviceSync(syncInput);
+
+    res.json({
+      deviceId: payload.deviceId,
+      syncedAt: now,
+      updates
+    });
+  })
+);
+
+app.post(
+  "/api/store/devices/:deviceId/events",
+  asyncHandler(async (req, res) => {
+    const deviceId = routeParam(req.params.deviceId).trim();
+    if (!deviceId) {
+      res.status(400).json({ message: "deviceId 파라미터가 필요합니다." });
+      return;
+    }
+
+    const parsed = storeEventSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const payload = parsed.data;
+    const status: StoreUpdateEventStatus = payload.status;
+    const createdAt = nowIso();
+    const eventId = uuidv4();
+
+    await db.createStoreUpdateEvent({
+      id: eventId,
+      deviceId,
+      packageName: payload.packageName.trim(),
+      appId: payload.appId?.trim() || undefined,
+      releaseId: payload.releaseId?.trim() || undefined,
+      targetVersionName: payload.targetVersionName?.trim() || undefined,
+      targetVersionCode: payload.targetVersionCode,
+      eventType: payload.eventType,
+      status,
+      message: payload.message?.trim() || undefined,
+      metadata: payload.metadata,
+      createdAt
+    });
+
+    res.status(201).json({
+      message: "이벤트 저장 완료",
+      eventId
+    });
+  })
+);
+
+app.get(
+  "/admin/store/devices",
+  asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    const parsed = adminStoreDeviceListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const devices = await db.listStoreDevices(parsed.data.query);
+    res.json({ devices });
+  })
+);
+
+app.get(
+  "/admin/store/devices/:deviceId",
+  asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    const deviceId = routeParam(req.params.deviceId).trim();
+    if (!deviceId) {
+      res.status(400).json({ message: "deviceId 파라미터가 필요합니다." });
+      return;
+    }
+
+    const device = await db.getStoreDevice(deviceId);
+    if (!device) {
+      res.status(404).json({ message: "Store device not found" });
+      return;
+    }
+
+    res.json({ device });
+  })
+);
+
+app.get(
+  "/admin/store/events",
+  asyncHandler(async (req, res) => {
+    if (!requireAdmin(req, res)) {
+      return;
+    }
+
+    const parsed = adminStoreEventListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
+      return;
+    }
+
+    const events = await db.listStoreUpdateEvents({
+      deviceId: parsed.data.deviceId?.trim() || undefined,
+      packageName: parsed.data.packageName?.trim() || undefined,
+      limit: parsed.data.limit
+    });
+
+    res.json({ events });
   })
 );
 

@@ -8,6 +8,8 @@ import ApkDetailPage from "./pages/ApkDetailPage";
 import DevicesPage from "./pages/DevicesPage";
 import DeviceCreatePage from "./pages/DeviceCreatePage";
 import DeviceDetailPage from "./pages/DeviceDetailPage";
+import StoreMonitorPage from "./pages/StoreMonitorPage";
+import StoreDeviceDetailPage from "./pages/StoreDeviceDetailPage";
 import { AdminAuthSession } from "./types/admin";
 
 const DEFAULT_API_PORT = 4000;
@@ -194,6 +196,8 @@ export default function App() {
             <Route path="devices" element={<DevicesPage />} />
             <Route path="devices/new" element={<DeviceCreatePage />} />
             <Route path="devices/:deviceId" element={<DeviceDetailPage />} />
+            <Route path="store" element={<StoreMonitorPage />} />
+            <Route path="store/devices/:deviceId" element={<StoreDeviceDetailPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/apk" replace />} />
         </Routes>

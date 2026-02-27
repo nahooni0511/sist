@@ -119,3 +119,57 @@ export interface AdminApiConfig {
   onAuthSession?: (session: AdminAuthSession | null) => void;
   onUnauthorized?: () => void;
 }
+
+export interface StoreDeviceSummary {
+  deviceId: string;
+  deviceName?: string;
+  modelName?: string;
+  platform?: string;
+  osVersion?: string;
+  appStoreVersion?: string;
+  ipAddress?: string;
+  lastSyncedAt?: string;
+  installedPackageCount: number;
+  availableUpdateCount: number;
+  latestEventAt?: string;
+  latestEventType?: string;
+  latestEventStatus?: string;
+}
+
+export interface StoreDevicePackage {
+  packageName: string;
+  versionCode: number;
+  versionName?: string;
+  syncedAt?: string;
+}
+
+export interface StoreSyncLog {
+  id: string;
+  deviceId: string;
+  syncedAt: string;
+  packageCount: number;
+  updateCount: number;
+  appStoreVersion?: string;
+  ipAddress?: string;
+}
+
+export interface StoreUpdateEvent {
+  id: string;
+  deviceId: string;
+  packageName: string;
+  appId?: string;
+  releaseId?: string;
+  targetVersionName?: string;
+  targetVersionCode?: number;
+  eventType: string;
+  status: "INFO" | "SUCCESS" | "FAILED";
+  message?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface StoreDeviceDetail extends StoreDeviceSummary {
+  packages: StoreDevicePackage[];
+  recentSyncs: StoreSyncLog[];
+  recentEvents: StoreUpdateEvent[];
+}
