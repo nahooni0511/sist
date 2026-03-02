@@ -1,9 +1,0 @@
-{
-  "apps": [],
-  "settings": {
-    "API_BASE_URL": "http://10.0.2.2:4000",
-    "AI_BOX_IP": "192.168.0.10"
-  },
-  "devices": {},
-  "commands": []
-}

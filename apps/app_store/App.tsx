@@ -1,17 +1,15 @@
+import * as Application from "expo-application";
 import { StatusBar } from "expo-status-bar";
-import * as FileSystem from "expo-file-system/legacy";
-import * as IntentLauncher from "expo-intent-launcher";
-import * as Linking from "expo-linking";
 import { LinearGradient } from "expo-linear-gradient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
   FlatList,
-  Platform,
   Pressable,
   RefreshControl,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -26,15 +24,39 @@ import {
   syncStoreDevice
 } from "./src/api";
 import { getOrCreateDeviceId } from "./src/deviceIdentity";
+import { InstallQueueController } from "./src/installQueue";
 import { MOCK_APPS } from "./src/mockApps";
-import { StoreApp, StoreSyncPackage } from "./src/types";
-import { InstalledVersionMap, loadInstalledVersions, saveInstalledVersion } from "./src/versionStore";
+import {
+  getNotificationPermissionStatus,
+  initNotificationHandler,
+  requestNotificationPermission as requestNotificationPermissionRuntime,
+  sendLocalNotification
+} from "./src/notifications";
+import {
+  canRequestPackageInstallsNative,
+  getNativeCapabilities,
+  listInstalledPackagesNative,
+  openUnknownSourcesSettingsNative
+} from "./src/nativeBridge";
+import { buildInstalledMap, classifyPackage } from "./src/packageClassifier";
+import { loadOnboardingDone, loadStructuredLogs, saveOnboardingDone } from "./src/runtimeStore";
+import {
+  InstallClassification,
+  InstalledAppInfo,
+  NativeInstallerCapability,
+  QueueFailurePolicy,
+  QueueItem,
+  QueueRuntimeState,
+  StructuredLogRecord,
+  StoreApp
+} from "./src/types";
+import { loadInstalledVersions, saveInstalledVersion } from "./src/versionStore";
 
 type Segment = "all" | "updates" | "installed";
 
-function sanitizeFileToken(raw: string): string {
-  return raw.replace(/[^a-zA-Z0-9._-]/g, "_");
-}
+const SYNC_INTERVAL_MS = 60_000;
+const APP_STORE_VERSION = process.env.EXPO_PUBLIC_APP_STORE_VERSION?.trim() || "1.0.0";
+const FALLBACK_SELF_PACKAGE = "kr.sist.appstore";
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) {
@@ -51,18 +73,47 @@ function formatBytes(bytes: number): string {
   return `${size.toFixed(size >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
-function actionLabel(installedVersion: number, latestVersion: number): string {
-  if (installedVersion < 0) {
-    return "받기";
+function labelFromClassification(classification: InstallClassification): string {
+  if (classification === "NEW_INSTALL") {
+    return "설치";
   }
-  if (latestVersion > installedVersion) {
+  if (classification === "UPDATE") {
     return "업데이트";
   }
   return "최신";
 }
 
-const SYNC_INTERVAL_MS = 60_000;
-const APP_STORE_VERSION = process.env.EXPO_PUBLIC_APP_STORE_VERSION?.trim() || "1.0.0";
+function stageLabel(item: QueueItem): string {
+  switch (item.stage) {
+    case "QUEUED":
+      return "대기";
+    case "DOWNLOADING":
+      return "다운로드";
+    case "VERIFYING":
+      return "검증";
+    case "INSTALLING":
+      return "설치";
+    case "PENDING_USER_ACTION":
+      return "사용자 확인 필요";
+    case "SUCCESS":
+      return "완료";
+    case "FAILED":
+      return "실패";
+    default:
+      return item.stage;
+  }
+}
+
+function nowLocalTime(iso?: string): string {
+  if (!iso) {
+    return "-";
+  }
+  return new Date(iso).toLocaleTimeString();
+}
+
+async function notify(title: string, body: string): Promise<void> {
+  await sendLocalNotification(title, body);
+}
 
 export default function App() {
   const { width } = useWindowDimensions();
@@ -70,22 +121,47 @@ export default function App() {
   const numColumns = width >= 980 ? 3 : width >= 680 ? 2 : 1;
 
   const [apps, setApps] = useState<StoreApp[]>([]);
-  const [installedVersions, setInstalledVersions] = useState<InstalledVersionMap>({});
-  const [deviceId, setDeviceId] = useState("");
-  const [apiBaseUrl, setApiBaseUrl] = useState(API_BASE_URL);
+  const [installedMap, setInstalledMap] = useState<Record<string, InstalledAppInfo>>({});
   const [search, setSearch] = useState("");
   const [segment, setSegment] = useState<Segment>("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [bannerMessage, setBannerMessage] = useState("");
+  const [apiBaseUrl, setApiBaseUrl] = useState(API_BASE_URL);
+
+  const [deviceId, setDeviceId] = useState("");
+  const [capabilities, setCapabilities] = useState<NativeInstallerCapability>({
+    packageInspector: false,
+    packageInstallerSession: false,
+    workManagerDownloader: false,
+    canOpenUnknownSourcesSettings: false
+  });
+
+  const [onboardingDone, setOnboardingDone] = useState(true);
+  const [unknownSourcesAllowed, setUnknownSourcesAllowed] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<"granted" | "denied" | "undetermined">(
+    "undetermined"
+  );
+
   const [syncing, setSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [availableUpdateCount, setAvailableUpdateCount] = useState(0);
-  const [downloading, setDownloading] = useState<Record<string, boolean>>({});
-  const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
+
+  const [queueState, setQueueState] = useState<QueueRuntimeState>({
+    policy: "RETRY_THEN_CONTINUE",
+    maxRetries: 2,
+    items: [],
+    updatedAt: new Date(0).toISOString()
+  });
+  const [progressMap, setProgressMap] = useState<Record<string, number>>({});
+  const [logs, setLogs] = useState<StructuredLogRecord[]>([]);
 
   const mountedRef = useRef(true);
+  const queueControllerRef = useRef<InstallQueueController | null>(null);
+  const notifiedProgressRef = useRef<Record<string, number>>({});
+
+  const selfPackageName = Application.applicationId || FALLBACK_SELF_PACKAGE;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -94,81 +170,37 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    void getOrCreateDeviceId().then((id) => {
-      if (cancelled || !mountedRef.current) {
-        return;
-      }
-      setDeviceId(id);
-    });
-
-    return () => {
-      cancelled = true;
-    };
+  const refreshLogs = useCallback(async () => {
+    const nextLogs = await loadStructuredLogs();
+    if (!mountedRef.current) {
+      return;
+    }
+    setLogs(nextLogs);
   }, []);
 
-  const reportStoreEvent = useCallback(
-    async (input: {
-      packageName: string;
-      appId?: string;
-      releaseId?: string;
-      targetVersionName?: string;
-      targetVersionCode?: number;
-      eventType:
-        | "CHECK_UPDATES"
-        | "DOWNLOAD_STARTED"
-        | "DOWNLOAD_FINISHED"
-        | "INSTALL_REQUESTED"
-        | "INSTALL_SUCCESS"
-        | "INSTALL_FAILED"
-        | "SYNC_COMPLETED";
-      status?: "INFO" | "SUCCESS" | "FAILED";
-      message?: string;
-      metadata?: Record<string, unknown>;
-    }) => {
-      if (!deviceId) {
-        return;
-      }
-      try {
-        await postStoreEvent(deviceId, input);
-      } catch {
-        // 이벤트 전송 실패는 사용자 동작을 막지 않는다.
-      }
-    },
-    [deviceId]
-  );
-
   const syncInBackground = useCallback(
-    async (nextApps: StoreApp[], localVersions: InstalledVersionMap, silent = true) => {
+    async (nextApps: StoreApp[], nextInstalledMap: Record<string, InstalledAppInfo>, silent: boolean) => {
       if (!deviceId) {
         return;
       }
 
-      const packageToApp = new Map(nextApps.map((item) => [item.packageName, item]));
-      const packages: StoreSyncPackage[] = Object.entries(localVersions)
-        .filter(([, versionCode]) => Number.isFinite(versionCode) && versionCode >= 0)
-        .map(([packageName, versionCode]) => {
-          const app = packageToApp.get(packageName);
-          const versionName =
-            app && app.latestRelease.versionCode === versionCode ? app.latestRelease.versionName : undefined;
-
-          return {
-            packageName,
-            versionCode,
-            versionName
-          };
-        });
+      const packages = Object.values(nextInstalledMap)
+        .filter((item) => Number.isFinite(item.versionCode) && item.versionCode >= 0)
+        .map((item) => ({
+          packageName: item.packageName,
+          versionCode: item.versionCode,
+          versionName: item.versionName
+        }));
 
       try {
         setSyncing(true);
+
         const syncResult = await syncStoreDevice({
           deviceId,
           deviceName: deviceId,
-          modelName: isTablet ? "sistrun-tablet" : "sistrun-phone",
-          platform: Platform.OS,
-          osVersion: String(Platform.Version),
+          modelName: isTablet ? "kiosk-tablet" : "kiosk-phone",
+          platform: "android",
+          osVersion: String(Application.nativeApplicationVersion || "unknown"),
           appStoreVersion: APP_STORE_VERSION,
           packages
         });
@@ -181,15 +213,7 @@ export default function App() {
         setLastSyncedAt(syncResult.syncedAt);
         setAvailableUpdateCount(syncResult.updates.length);
 
-        if (!silent) {
-          setBannerMessage(
-            syncResult.updates.length > 0
-              ? `백그라운드 동기화 완료: 업데이트 ${syncResult.updates.length}개`
-              : "백그라운드 동기화 완료"
-          );
-        }
-
-        await reportStoreEvent({
+        await postStoreEvent(deviceId, {
           packageName: "__app_store__",
           eventType: "SYNC_COMPLETED",
           status: "SUCCESS",
@@ -199,19 +223,53 @@ export default function App() {
             packageCount: packages.length
           }
         });
+
+        if (!silent) {
+          const msg =
+            syncResult.updates.length > 0
+              ? `동기화 완료: 업데이트 ${syncResult.updates.length}개`
+              : "동기화 완료";
+          setBannerMessage(msg);
+          await notify("스토어 동기화", msg);
+        }
       } catch (e) {
         if (!mountedRef.current || silent) {
           return;
         }
-        const message = e instanceof Error ? e.message : "동기화 실패";
-        setBannerMessage(`백그라운드 동기화 실패: ${message}`);
+        setBannerMessage(`동기화 실패: ${(e as Error).message}`);
       } finally {
         if (mountedRef.current) {
           setSyncing(false);
         }
       }
     },
-    [deviceId, isTablet, reportStoreEvent]
+    [deviceId, isTablet]
+  );
+
+  const loadInstalledInfo = useCallback(
+    async (targetApps: StoreApp[]): Promise<Record<string, InstalledAppInfo>> => {
+      const targetPackages = Array.from(new Set([...targetApps.map((item) => item.packageName), selfPackageName]));
+
+      const nativeInstalled = await listInstalledPackagesNative(targetPackages);
+      if (nativeInstalled.length > 0) {
+        return buildInstalledMap(nativeInstalled);
+      }
+
+      const fallback = await loadInstalledVersions();
+      return Object.fromEntries(
+        targetPackages
+          .filter((pkg) => Number.isFinite(fallback[pkg]))
+          .map((pkg) => [
+            pkg,
+            {
+              packageName: pkg,
+              versionCode: fallback[pkg],
+              versionName: undefined
+            }
+          ])
+      );
+    },
+    [selfPackageName]
   );
 
   const loadAll = useCallback(
@@ -219,34 +277,32 @@ export default function App() {
       if (showSpinner) {
         setLoading(true);
       }
-
       setError("");
 
       try {
-        const [nextApps, localVersions] = await Promise.all([fetchStoreApps(), loadInstalledVersions()]);
+        const fetchedApps = await fetchStoreApps();
+        const nextApps = fetchedApps.length > 0 ? fetchedApps : [];
+        const nextInstalledMap = await loadInstalledInfo(nextApps);
+
         if (!mountedRef.current) {
           return;
         }
+
         setBannerMessage("");
         setApiBaseUrl(getCurrentApiBaseUrl());
-        setApps(nextApps);
-        setInstalledVersions(localVersions);
-        void syncInBackground(nextApps, localVersions, true);
+        setApps(nextApps.length > 0 ? nextApps : []);
+        setInstalledMap(nextInstalledMap);
+        void syncInBackground(nextApps, nextInstalledMap, true);
       } catch (e) {
         if (!mountedRef.current) {
           return;
         }
+
         const message = e instanceof Error ? e.message : "앱 목록을 불러오지 못했습니다.";
         setError(message);
         setApps(MOCK_APPS);
-        setInstalledVersions((prev) =>
-          Object.keys(prev).length > 0
-            ? prev
-            : {
-                "com.sistrun.hub.manager": 20200,
-                "com.sistrun.viewer": 10800
-              }
-        );
+        const fallbackMap = await loadInstalledInfo(MOCK_APPS);
+        setInstalledMap(fallbackMap);
         setBannerMessage("실서버 연결 실패로 데모 앱 목록을 표시합니다.");
       } finally {
         if (!mountedRef.current) {
@@ -256,12 +312,120 @@ export default function App() {
         setRefreshing(false);
       }
     },
-    [syncInBackground]
+    [loadInstalledInfo, syncInBackground]
   );
 
   useEffect(() => {
-    void loadAll(true);
-  }, [loadAll]);
+    let cancelled = false;
+
+    void (async () => {
+      const [nextDeviceId, nextCapabilities, isOnboardingDone, notificationSettings] = await Promise.all([
+        getOrCreateDeviceId(),
+        getNativeCapabilities(),
+        loadOnboardingDone(),
+        getNotificationPermissionStatus(),
+        initNotificationHandler()
+      ]);
+
+      if (cancelled || !mountedRef.current) {
+        return;
+      }
+
+      setDeviceId(nextDeviceId);
+      setCapabilities(nextCapabilities);
+      setOnboardingDone(isOnboardingDone);
+      setNotificationPermission(notificationSettings);
+
+      if (nextCapabilities.packageInstallerSession) {
+        const allowed = await canRequestPackageInstallsNative();
+        if (mountedRef.current) {
+          setUnknownSourcesAllowed(allowed);
+        }
+      } else {
+        setUnknownSourcesAllowed(true);
+      }
+
+      await refreshLogs();
+      await loadAll(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAll, refreshLogs]);
+
+  useEffect(() => {
+    if (!deviceId || queueControllerRef.current) {
+      return;
+    }
+
+    const controller = new InstallQueueController({
+      onState: (nextState) => {
+        setQueueState(nextState);
+        void refreshLogs();
+      },
+      onBanner: (message) => {
+        setBannerMessage(message);
+        void notify("스토어 작업", message);
+      },
+      onProgress: (packageName, progress) => {
+        setProgressMap((prev) => ({ ...prev, [packageName]: progress }));
+        const prevNotified = notifiedProgressRef.current[packageName] ?? -1;
+        const checkpoint = Math.floor(progress / 25) * 25;
+        if (checkpoint > 0 && checkpoint !== prevNotified) {
+          notifiedProgressRef.current[packageName] = checkpoint;
+          void notify("다운로드 진행", `${packageName} ${checkpoint}%`);
+        }
+      },
+      onInstallSuccess: async (packageName, versionCode) => {
+        setInstalledMap((prev) => ({
+          ...prev,
+          [packageName]: {
+            packageName,
+            versionCode,
+            versionName: prev[packageName]?.versionName
+          }
+        }));
+
+        const fallback = await loadInstalledVersions();
+        await saveInstalledVersion(packageName, versionCode, fallback);
+
+        const mapAfter = {
+          ...installedMap,
+          [packageName]: {
+            packageName,
+            versionCode,
+            versionName: installedMap[packageName]?.versionName
+          }
+        };
+        await syncInBackground(apps, mapAfter, true);
+
+        if (packageName === selfPackageName) {
+          setBannerMessage("스토어 앱 업데이트가 완료되었습니다. 앱 상태를 복구합니다.");
+          await notify("스토어 업데이트", "업데이트 완료 후 큐 상태를 복원했습니다.");
+        }
+      },
+      onStoreEvent: async (params) => {
+        if (!deviceId) {
+          return;
+        }
+        await postStoreEvent(deviceId, {
+          packageName: params.packageName,
+          appId: params.appId,
+          releaseId: params.release.id,
+          targetVersionName: params.release.versionName,
+          targetVersionCode: params.release.versionCode,
+          eventType: params.eventType,
+          status: params.status,
+          message: params.message,
+          metadata: params.metadata
+        });
+      }
+    });
+
+    queueControllerRef.current = controller;
+    void controller.initialize();
+  }, [apps, deviceId, installedMap, refreshLogs, syncInBackground]);
 
   useEffect(() => {
     if (!deviceId) {
@@ -272,12 +436,12 @@ export default function App() {
       if (AppState.currentState !== "active") {
         return;
       }
-      void syncInBackground(apps, installedVersions, true);
+      void syncInBackground(apps, installedMap, true);
     }, SYNC_INTERVAL_MS);
 
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
-        void syncInBackground(apps, installedVersions, true);
+        void syncInBackground(apps, installedMap, true);
       }
     });
 
@@ -285,20 +449,26 @@ export default function App() {
       clearInterval(timer);
       subscription.remove();
     };
-  }, [apps, deviceId, installedVersions, syncInBackground]);
+  }, [apps, deviceId, installedMap, syncInBackground]);
+
+  const appClassifications = useMemo(() => {
+    return Object.fromEntries(
+      apps.map((app) => [
+        app.packageName,
+        classifyPackage(app, installedMap[app.packageName])
+      ])
+    ) as Record<string, InstallClassification>;
+  }, [apps, installedMap]);
 
   const visibleApps = useMemo(() => {
     const q = search.trim().toLowerCase();
 
     return apps.filter((app) => {
-      const installedVersion = installedVersions[app.packageName] ?? -1;
-      const hasUpdate = app.latestRelease.versionCode > installedVersion;
-      const installed = installedVersion >= 0;
-
-      if (segment === "updates" && !hasUpdate) {
+      const classification = appClassifications[app.packageName] || "NEW_INSTALL";
+      if (segment === "updates" && classification !== "UPDATE") {
         return false;
       }
-      if (segment === "installed" && !installed) {
+      if (segment === "installed" && classification === "NEW_INSTALL") {
         return false;
       }
 
@@ -312,162 +482,87 @@ export default function App() {
         app.appId.toLowerCase().includes(q)
       );
     });
-  }, [apps, installedVersions, search, segment]);
+  }, [appClassifications, apps, search, segment]);
 
   const featuredApps = useMemo(() => apps.slice(0, 6), [apps]);
+
+  const queueSummary = useMemo(() => {
+    const pending = queueState.items.filter(
+      (item) => item.stage === "QUEUED" || item.stage === "DOWNLOADING" || item.stage === "VERIFYING" || item.stage === "INSTALLING"
+    ).length;
+    const failed = queueState.items.filter((item) => item.stage === "FAILED").length;
+    const success = queueState.items.filter((item) => item.stage === "SUCCESS").length;
+    return { pending, failed, success };
+  }, [queueState.items]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     void loadAll(false);
   }, [loadAll]);
 
-  const installApk = useCallback(
+  const enqueueSingle = useCallback(
     async (app: StoreApp) => {
-      const packageName = app.packageName;
-      const release = app.latestRelease;
-
-      if (!release.downloadUrl) {
-        setBannerMessage("다운로드 URL이 비어 있습니다.");
+      const classification = appClassifications[app.packageName] || "NEW_INSTALL";
+      if (classification === "LATEST") {
+        setBannerMessage(`${app.displayName}은 이미 최신입니다.`);
         return;
       }
 
-      setDownloading((prev) => ({ ...prev, [packageName]: true }));
-      setDownloadProgress((prev) => ({ ...prev, [packageName]: 0 }));
-      setBannerMessage("");
-      await reportStoreEvent({
-        packageName,
-        appId: app.appId,
-        releaseId: release.id,
-        targetVersionName: release.versionName,
-        targetVersionCode: release.versionCode,
-        eventType: "DOWNLOAD_STARTED",
-        status: "INFO",
-        message: "사용자 수동 업데이트 시작"
-      });
-
-      try {
-        if (FileSystem.cacheDirectory == null) {
-          throw new Error("로컬 캐시 저장소를 사용할 수 없습니다.");
+      await queueControllerRef.current?.enqueue([
+        {
+          app,
+          classification
         }
+      ]);
 
-        const targetDir = `${FileSystem.cacheDirectory}apk-store/`;
-        await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true });
-
-        const fileName = `${sanitizeFileToken(packageName)}-${release.versionCode}.apk`;
-        const localUri = `${targetDir}${fileName}`;
-
-        const task = FileSystem.createDownloadResumable(
-          release.downloadUrl,
-          localUri,
-          {},
-          (progress) => {
-            if (!progress.totalBytesExpectedToWrite) {
-              return;
-            }
-            const percent = Math.round((progress.totalBytesWritten / progress.totalBytesExpectedToWrite) * 100);
-            setDownloadProgress((prev) => ({ ...prev, [packageName]: percent }));
-          }
-        );
-
-        const downloaded = await task.downloadAsync();
-        if (!downloaded?.uri) {
-          throw new Error("APK 다운로드에 실패했습니다.");
-        }
-
-        await reportStoreEvent({
-          packageName,
-          appId: app.appId,
-          releaseId: release.id,
-          targetVersionName: release.versionName,
-          targetVersionCode: release.versionCode,
-          eventType: "DOWNLOAD_FINISHED",
-          status: "SUCCESS",
-          metadata: {
-            localUri: downloaded.uri
-          }
-        });
-
-        let nextInstalledVersions = installedVersions;
-        if (release.versionCode > (installedVersions[packageName] ?? -1)) {
-          const next = await saveInstalledVersion(packageName, release.versionCode, installedVersions);
-          nextInstalledVersions = next;
-          setInstalledVersions(next);
-        }
-
-        if (downloaded.uri.startsWith("file://")) {
-          const contentUri = await FileSystem.getContentUriAsync(downloaded.uri);
-
-          await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
-            data: contentUri,
-            type: "application/vnd.android.package-archive",
-            flags: 1
-          });
-
-          await reportStoreEvent({
-            packageName,
-            appId: app.appId,
-            releaseId: release.id,
-            targetVersionName: release.versionName,
-            targetVersionCode: release.versionCode,
-            eventType: "INSTALL_REQUESTED",
-            status: "INFO",
-            message: "패키지 설치 인텐트 실행"
-          });
-
-          await reportStoreEvent({
-            packageName,
-            appId: app.appId,
-            releaseId: release.id,
-            targetVersionName: release.versionName,
-            targetVersionCode: release.versionCode,
-            eventType: "INSTALL_SUCCESS",
-            status: "SUCCESS",
-            message: "설치 화면 열기 완료"
-          });
-
-          void syncInBackground(apps, nextInstalledVersions, true);
-          setBannerMessage(`${app.displayName} 설치 화면을 열었습니다.`);
-          return;
-        }
-
-        await Linking.openURL(release.downloadUrl);
-        await reportStoreEvent({
-          packageName,
-          appId: app.appId,
-          releaseId: release.id,
-          targetVersionName: release.versionName,
-          targetVersionCode: release.versionCode,
-          eventType: "INSTALL_REQUESTED",
-          status: "INFO",
-          message: "브라우저 다운로드 링크 열기"
-        });
-        void syncInBackground(apps, nextInstalledVersions, true);
-        setBannerMessage(`${app.displayName} 다운로드 링크를 열었습니다.`);
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "설치 요청에 실패했습니다.";
-        await reportStoreEvent({
-          packageName,
-          appId: app.appId,
-          releaseId: release.id,
-          targetVersionName: release.versionName,
-          targetVersionCode: release.versionCode,
-          eventType: "INSTALL_FAILED",
-          status: "FAILED",
-          message
-        });
-
-        try {
-          await Linking.openURL(release.downloadUrl);
-          setBannerMessage(`설치 인텐트 실패로 브라우저 다운로드를 열었습니다: ${message}`);
-        } catch {
-          setBannerMessage(`설치 실패: ${message}`);
-        }
-      } finally {
-        setDownloading((prev) => ({ ...prev, [packageName]: false }));
-      }
+      setBannerMessage(`${app.displayName} 작업을 큐에 추가했습니다.`);
     },
-    [apps, installedVersions, reportStoreEvent, syncInBackground]
+    [appClassifications]
   );
+
+  const enqueueAllUpdates = useCallback(async () => {
+    const targets = apps
+      .map((app) => ({ app, classification: appClassifications[app.packageName] || "NEW_INSTALL" }))
+      .filter((entry) => entry.classification === "UPDATE");
+
+    if (targets.length === 0) {
+      setBannerMessage("업데이트 대상이 없습니다.");
+      return;
+    }
+
+    await queueControllerRef.current?.enqueue(targets);
+    setBannerMessage(`업데이트 ${targets.length}개를 큐에 추가했습니다.`);
+    await notify("전체 업데이트", `${targets.length}개 앱 업데이트를 시작합니다.`);
+  }, [appClassifications, apps]);
+
+  const setPolicy = useCallback(async (policy: QueueFailurePolicy) => {
+    await queueControllerRef.current?.setPolicy(policy, queueState.maxRetries || 2);
+  }, [queueState.maxRetries]);
+
+  const clearFinished = useCallback(async () => {
+    await queueControllerRef.current?.clearFinished();
+  }, []);
+
+  const refreshPermissionStatus = useCallback(async () => {
+    const status = await canRequestPackageInstallsNative();
+    setUnknownSourcesAllowed(status || !capabilities.packageInstallerSession);
+  }, [capabilities.packageInstallerSession]);
+
+  const requestNotificationPermission = useCallback(async () => {
+    const status = await requestNotificationPermissionRuntime();
+    setNotificationPermission(status);
+  }, []);
+
+  const completeOnboarding = useCallback(async () => {
+    if (!unknownSourcesAllowed) {
+      setBannerMessage("알 수 없는 앱 설치 허용을 먼저 완료하세요.");
+      return;
+    }
+
+    await saveOnboardingDone(true);
+    setOnboardingDone(true);
+    setBannerMessage("초기 설정이 완료되었습니다.");
+  }, [unknownSourcesAllowed]);
 
   const renderHeader = () => (
     <View style={styles.headerWrap}>
@@ -476,13 +571,84 @@ export default function App() {
           <Text style={styles.title}>SISTRUN App Store</Text>
           <Text style={styles.subtitle}>API: {apiBaseUrl}</Text>
           <Text style={styles.subtitle}>
-            device: {deviceId || "준비 중"} · sync:{" "}
-            {syncing ? "진행 중" : lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : "대기"}
+            device: {deviceId || "준비 중"} · sync: {syncing ? "진행 중" : nowLocalTime(lastSyncedAt)}
+          </Text>
+          <Text style={styles.subtitle}>
+            native: PM[{capabilities.packageInspector ? "Y" : "N"}] PI[{capabilities.packageInstallerSession ? "Y" : "N"}] WM[{capabilities.workManagerDownloader ? "Y" : "N"}]
           </Text>
         </View>
+
         <View style={styles.badgeStack}>
           <Text style={styles.badge}>{apps.length}개 앱</Text>
           <Text style={styles.badgeSecondary}>업데이트 {availableUpdateCount}개</Text>
+          <Pressable style={styles.smallAction} onPress={() => void enqueueAllUpdates()}>
+            <Text style={styles.smallActionText}>전체 업데이트</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {!onboardingDone && (
+        <View style={styles.onboardingCard}>
+          <Text style={styles.onboardingTitle}>초기 설정 (1회)</Text>
+          <Text style={styles.onboardingText}>
+            1) 알 수 없는 앱 설치 허용: {unknownSourcesAllowed ? "완료" : "필요"}
+          </Text>
+          <Text style={styles.onboardingText}>
+            2) 알림 권한(Android 13+): {notificationPermission}
+          </Text>
+          <View style={styles.actionRow}>
+            <Pressable style={styles.secondaryButton} onPress={() => void openUnknownSourcesSettingsNative()}>
+              <Text style={styles.secondaryButtonText}>설치 허용 화면 열기</Text>
+            </Pressable>
+            <Pressable style={styles.secondaryButton} onPress={() => void refreshPermissionStatus()}>
+              <Text style={styles.secondaryButtonText}>허용 여부 재확인</Text>
+            </Pressable>
+            <Pressable style={styles.secondaryButton} onPress={() => void requestNotificationPermission()}>
+              <Text style={styles.secondaryButtonText}>알림 권한 요청</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.primaryPill, !unknownSourcesAllowed && styles.primaryPillDisabled]}
+              disabled={!unknownSourcesAllowed}
+              onPress={() => void completeOnboarding()}
+            >
+              <Text style={styles.primaryPillText}>온보딩 완료</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      <View style={styles.queueCard}>
+        <Text style={styles.sectionTitle}>업데이트 큐</Text>
+        <Text style={styles.queueSummaryText}>
+          진행 {queueSummary.pending} · 성공 {queueSummary.success} · 실패 {queueSummary.failed}
+        </Text>
+        <View style={styles.actionRow}>
+          {[
+            { key: "STOP_ON_FAILURE", label: "실패 시 중단" },
+            { key: "CONTINUE_ON_FAILURE", label: "실패해도 계속" },
+            { key: "RETRY_THEN_CONTINUE", label: "재시도 후 계속" }
+          ].map((option) => (
+            <Pressable
+              key={option.key}
+              style={[
+                styles.policyButton,
+                queueState.policy === option.key && styles.policyButtonActive
+              ]}
+              onPress={() => void setPolicy(option.key as QueueFailurePolicy)}
+            >
+              <Text
+                style={[
+                  styles.policyText,
+                  queueState.policy === option.key && styles.policyTextActive
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+          <Pressable style={styles.secondaryButton} onPress={() => void clearFinished()}>
+            <Text style={styles.secondaryButtonText}>완료/실패 정리</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -517,8 +683,9 @@ export default function App() {
       <Text style={styles.sectionTitle}>추천 앱</Text>
       <View style={styles.featuredGrid}>
         {featuredApps.map((app) => {
-          const installedVersion = installedVersions[app.packageName] ?? -1;
-          const hasUpdate = app.latestRelease.versionCode > installedVersion;
+          const classification = appClassifications[app.packageName] || "NEW_INSTALL";
+          const hasUpdate = classification === "UPDATE";
+
           return (
             <LinearGradient
               key={`featured-${app.appId}`}
@@ -546,12 +713,18 @@ export default function App() {
   );
 
   const renderItem = ({ item }: { item: StoreApp }) => {
-    const installedVersion = installedVersions[item.packageName] ?? -1;
-    const latestVersion = item.latestRelease.versionCode;
-    const isDownloading = downloading[item.packageName] === true;
-    const progress = downloadProgress[item.packageName] ?? 0;
-    const hasUpdate = latestVersion > installedVersion;
-    const canInstall = installedVersion < 0 || hasUpdate;
+    const classification = appClassifications[item.packageName] || "NEW_INSTALL";
+    const queueItem = [...queueState.items]
+      .reverse()
+      .find((queued) => queued.packageName === item.packageName && queued.release.versionCode === item.latestRelease.versionCode);
+
+    const isBusy =
+      queueItem?.stage === "QUEUED" ||
+      queueItem?.stage === "DOWNLOADING" ||
+      queueItem?.stage === "VERIFYING" ||
+      queueItem?.stage === "INSTALLING";
+
+    const progress = progressMap[item.packageName] ?? 0;
 
     return (
       <View style={[styles.card, isTablet && styles.cardTablet]}>
@@ -580,29 +753,46 @@ export default function App() {
               {item.latestRelease.changelog}
             </Text>
           )}
+          {item.packageName === selfPackageName ? <Text style={styles.selfTag}>스토어 앱 자기 업데이트 대상</Text> : null}
 
           <View style={styles.actionRow}>
             <Pressable
               style={[
                 styles.downloadButton,
-                (!canInstall && !isDownloading) && styles.downloadButtonDisabled,
-                isDownloading && styles.downloadButtonBusy
+                classification === "LATEST" && !isBusy ? styles.downloadButtonDisabled : null,
+                isBusy ? styles.downloadButtonBusy : null
               ]}
-              onPress={() => void installApk(item)}
-              disabled={(!canInstall && !isDownloading) || isDownloading}
+              onPress={() => void enqueueSingle(item)}
+              disabled={classification === "LATEST" || isBusy}
             >
               <Text style={styles.downloadText}>
-                {isDownloading ? `다운로드 ${progress}%` : actionLabel(installedVersion, latestVersion)}
+                {isBusy
+                  ? `${stageLabel(queueItem || {
+                      id: "",
+                      appId: "",
+                      packageName: "",
+                      displayName: "",
+                      release: item.latestRelease,
+                      classification,
+                      stage: "QUEUED",
+                      attempts: 0,
+                      maxRetries: 0,
+                      createdAt: "",
+                      updatedAt: ""
+                    })}${queueItem?.stage === "DOWNLOADING" ? ` ${progress}%` : ""}`
+                  : labelFromClassification(classification)}
               </Text>
             </Pressable>
 
             <Text style={styles.stateText}>
-              {installedVersion < 0
+              {classification === "NEW_INSTALL"
                 ? "미설치"
-                : hasUpdate
-                  ? `설치됨 ${installedVersion} → 최신 ${latestVersion}`
-                  : `설치됨 ${installedVersion}`}
+                : classification === "UPDATE"
+                  ? `설치됨 ${installedMap[item.packageName]?.versionCode ?? "-"} → 최신 ${item.latestRelease.versionCode}`
+                  : `설치됨 ${installedMap[item.packageName]?.versionCode ?? "-"}`}
             </Text>
+
+            {queueItem?.failureMessage ? <Text style={styles.errorText}>실패: {queueItem.failureMessage}</Text> : null}
           </View>
         </View>
       </View>
@@ -630,6 +820,20 @@ export default function App() {
         keyExtractor={(item) => item.appId}
         renderItem={renderItem}
         ListHeaderComponent={renderHeader}
+        ListFooterComponent={
+          <View style={styles.logCard}>
+            <Text style={styles.sectionTitle}>구조화 로그(최근)</Text>
+            <ScrollView style={styles.logScroll} nestedScrollEnabled>
+              {logs.slice(0, 20).map((log) => (
+                <View key={log.id} style={styles.logRow}>
+                  <Text style={styles.logMeta}>[{log.level}] {new Date(log.createdAt).toLocaleTimeString()} · {log.step}</Text>
+                  <Text style={styles.logMessage}>{log.packageName} · {log.code} · {log.message}</Text>
+                </View>
+              ))}
+              {logs.length === 0 ? <Text style={styles.emptyText}>로그가 없습니다.</Text> : null}
+            </ScrollView>
+          </View>
+        }
         ListEmptyComponent={<Text style={styles.emptyText}>조건에 맞는 앱이 없습니다.</Text>}
         numColumns={numColumns}
         contentContainerStyle={styles.listContent}
@@ -665,8 +869,9 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 14
+    alignItems: "flex-start",
+    marginBottom: 14,
+    gap: 12
   },
   title: {
     color: "#F9FAFB",
@@ -678,6 +883,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12
   },
+  badgeStack: {
+    alignItems: "flex-end",
+    gap: 6
+  },
   badge: {
     color: "#BFDBFE",
     backgroundColor: "#1D4ED8",
@@ -686,10 +895,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     fontWeight: "700",
     overflow: "hidden"
-  },
-  badgeStack: {
-    alignItems: "flex-end",
-    gap: 6
   },
   badgeSecondary: {
     color: "#C7D2FE",
@@ -700,6 +905,94 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     overflow: "hidden"
+  },
+  smallAction: {
+    backgroundColor: "#1E40AF",
+    borderRadius: 999,
+    paddingVertical: 6,
+    paddingHorizontal: 12
+  },
+  smallActionText: {
+    color: "#E0E7FF",
+    fontWeight: "700",
+    fontSize: 12
+  },
+  onboardingCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#1F2937",
+    backgroundColor: "#111827",
+    padding: 12,
+    marginBottom: 12,
+    gap: 6
+  },
+  onboardingTitle: {
+    color: "#E2E8F0",
+    fontWeight: "700",
+    fontSize: 16
+  },
+  onboardingText: {
+    color: "#CBD5E1",
+    fontSize: 13
+  },
+  queueCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#1F2937",
+    backgroundColor: "#0F172A",
+    padding: 12,
+    marginBottom: 12,
+    gap: 8
+  },
+  queueSummaryText: {
+    color: "#BFDBFE",
+    fontSize: 12
+  },
+  policyButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#334155",
+    paddingVertical: 8,
+    paddingHorizontal: 12
+  },
+  policyButtonActive: {
+    backgroundColor: "#1D4ED8",
+    borderColor: "#1D4ED8"
+  },
+  policyText: {
+    color: "#94A3B8",
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  policyTextActive: {
+    color: "#DBEAFE"
+  },
+  secondaryButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#334155",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "#0F172A"
+  },
+  secondaryButtonText: {
+    color: "#CBD5E1",
+    fontWeight: "700",
+    fontSize: 12
+  },
+  primaryPill: {
+    borderRadius: 999,
+    backgroundColor: "#2563EB",
+    paddingVertical: 8,
+    paddingHorizontal: 14
+  },
+  primaryPillDisabled: {
+    backgroundColor: "#475569"
+  },
+  primaryPillText: {
+    color: "#EFF6FF",
+    fontSize: 12,
+    fontWeight: "700"
   },
   searchWrap: {
     marginBottom: 12
@@ -742,7 +1035,7 @@ const styles = StyleSheet.create({
     color: "#E5E7EB",
     fontSize: 18,
     fontWeight: "700",
-    marginBottom: 10,
+    marginBottom: 8,
     marginTop: 4
   },
   featuredGrid: {
@@ -824,9 +1117,17 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12
   },
+  selfTag: {
+    color: "#A7F3D0",
+    fontSize: 12,
+    marginTop: 4
+  },
   actionRow: {
     marginTop: 8,
-    gap: 6
+    gap: 6,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center"
   },
   downloadButton: {
     alignSelf: "flex-start",
@@ -854,5 +1155,30 @@ const styles = StyleSheet.create({
     color: "#9CA3AF",
     textAlign: "center",
     paddingVertical: 30
+  },
+  logCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#1F2937",
+    backgroundColor: "#0B1220",
+    padding: 12,
+    marginTop: 4
+  },
+  logScroll: {
+    maxHeight: 260
+  },
+  logRow: {
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#1E293B"
+  },
+  logMeta: {
+    color: "#93C5FD",
+    fontSize: 11
+  },
+  logMessage: {
+    color: "#CBD5E1",
+    fontSize: 12,
+    marginTop: 2
   }
 });

@@ -6,22 +6,38 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
 import multer from "multer";
+import { createClient } from "redis";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import {
   AppEntry,
   AppRelease,
+  AuthUserRecord,
   CommandRecord,
   CommandStatus,
   CommandType,
   CreateDeviceInput,
+  CreateInstitutionDeliveryInput,
+  CreateInstitutionInput,
   DeviceRecord,
+  InstitutionFieldValue,
+  InstitutionLogFilters,
+  InstitutionStatus,
+  InstitutionTypeCode,
   MySqlDb,
   StoreDevicePackageVersion,
   StoreDeviceSyncInput,
+  UpdateInstitutionInput,
   StoreUpdateEventStatus
 } from "./db.js";
+import { DbAuthService } from "./admin-auth.js";
+import { loadConfig } from "./config.js";
 import { MinioObjectStorage } from "./object-storage.js";
+import { registerAdminRoutes } from "./routes/admin-routes.js";
+import { registerApiRoutes } from "./routes/api-routes.js";
+import { registerHealthRoutes } from "./routes/health-routes.js";
+import { registerSchoolRoutes } from "./routes/school-routes.js";
+import { registerStoreRoutes } from "./routes/store-routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,40 +47,41 @@ const tmpDir = path.join(storageDir, "tmp");
 
 fs.mkdirSync(tmpDir, { recursive: true });
 
+const config = loadConfig();
+
 const app = express();
-const port = parseEnvNumber("PORT", 4000);
-const baseUrl = process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`;
-const hardcodedAdminId = "sist-admin";
-const hardcodedAdminPassword = "SistSist11@";
-const accessTokenTtlMs = parseEnvNumber("ADMIN_ACCESS_TOKEN_TTL_MINUTES", 30) * 60_000;
-const refreshTokenTtlMs = parseEnvNumber("ADMIN_REFRESH_TOKEN_TTL_DAYS", 7) * 24 * 60 * 60_000;
-
-type AdminAuthSession = {
-  sessionId: string;
-  userId: string;
-  accessToken: string;
-  refreshToken: string;
-  accessTokenExpiresAtMs: number;
-  refreshTokenExpiresAtMs: number;
-};
-
-const sessionsByAccessToken = new Map<string, AdminAuthSession>();
-const sessionsByRefreshToken = new Map<string, AdminAuthSession>();
+const port = config.server.port;
+const baseUrl = config.server.baseUrl;
 
 const db = new MySqlDb({
-  host: process.env.MYSQL_HOST ?? "127.0.0.1",
-  port: parseEnvNumber("MYSQL_PORT", 3306),
-  username: process.env.MYSQL_USERNAME ?? process.env.MYSQL_USER ?? "root",
-  password: process.env.MYSQL_PASSWORD ?? "",
-  database: process.env.MYSQL_DATABASE ?? "sistrun_hub",
-  connectionLimit: parseEnvNumber("MYSQL_CONNECTION_LIMIT", 10)
+  host: config.mysql.host,
+  port: config.mysql.port,
+  username: config.mysql.username,
+  password: config.mysql.password,
+  database: config.mysql.database,
+  connectionLimit: config.mysql.connectionLimit
+});
+const redisClient = createClient({
+  url: config.redis.url,
+  username: config.redis.username,
+  password: config.redis.password
+});
+redisClient.on("error", (error) => {
+  console.error("[api-server] redis error:", error);
+});
+
+const authService = new DbAuthService({
+  db,
+  redis: redisClient,
+  accessTokenTtlMs: config.admin.accessTokenTtlMs,
+  refreshTokenTtlMs: config.admin.refreshTokenTtlMs
 });
 
 const objectStorage = new MinioObjectStorage({
-  host: process.env.MINIO_HOST ?? "127.0.0.1:9000",
-  accessKey: process.env.MINIO_ACCESS_KEY ?? "minioadmin",
-  secretKey: process.env.MINIO_SECRET_KEY ?? "minioadmin",
-  bucketName: process.env.MINIO_BUCKET_NAME ?? "sistrun-apks"
+  host: config.minio.host,
+  accessKey: config.minio.accessKey,
+  secretKey: config.minio.secretKey,
+  bucketName: config.minio.bucketName
 });
 
 app.use(cors());
@@ -99,10 +116,38 @@ const checkUpdatesSchema = z.object({
     .default([])
 });
 
+const commandTypeValues = [
+  "RESTART_APP",
+  "RESTART_SERVICE",
+  "RUN_HEALTHCHECK",
+  "DIAG_NETWORK",
+  "SYNC_TIME",
+  "COLLECT_LOGS",
+  "CAPTURE_SCREENSHOT",
+  "CLEAR_CACHE",
+  "PREFETCH_CONTENT",
+  "APPLY_PROFILE",
+  "REBOOT",
+  "INSTALL_APP",
+  "UPDATE_APP",
+  "APPLY_POLICY"
+] as const;
+
 const createCommandSchema = z.object({
   deviceId: z.string().min(1),
-  type: z.enum(["INSTALL_APP", "UPDATE_APP", "REBOOT", "APPLY_POLICY"]),
+  type: z.enum(commandTypeValues),
   payload: z.record(z.string(), z.unknown()).default({})
+});
+
+const adminCreateDeviceCommandSchema = z.object({
+  type: z.enum(commandTypeValues),
+  payload: z.record(z.string(), z.unknown()).default({}),
+  requestedBy: z.string().optional()
+});
+
+const adminDeviceCommandListQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(200).optional().default(50),
+  status: z.enum(["PENDING", "RUNNING", "SUCCESS", "FAILED"]).optional()
 });
 
 const pullCommandsSchema = z.object({
@@ -132,7 +177,147 @@ const adminCreateDeviceSchema = z.object({
     name: z.string().min(1),
     lat: z.coerce.number().min(-90).max(90),
     lng: z.coerce.number().min(-180).max(180)
+  }),
+  institutionId: z.string().uuid().optional(),
+  deliveredAt: z.string().datetime().optional(),
+  installLocation: z.string().optional(),
+  deliveryMemo: z.string().optional()
+});
+
+const institutionTypeCodeValues = ["SCHOOL", "PARK"] as const;
+const institutionStatusValues = ["ACTIVE", "INACTIVE", "PENDING"] as const;
+const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+const institutionFieldValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const institutionFieldValuesSchema = z.record(z.string(), institutionFieldValueSchema);
+
+const adminInstitutionListQuerySchema = z.object({
+  query: z.string().optional(),
+  typeCode: z.enum(institutionTypeCodeValues).optional(),
+  status: z.enum(institutionStatusValues).optional(),
+  hasActiveDevices: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((value) => {
+      if (typeof value === "boolean") {
+        return value;
+      }
+      if (typeof value === "string") {
+        if (value.toLowerCase() === "true") {
+          return true;
+        }
+        if (value.toLowerCase() === "false") {
+          return false;
+        }
+      }
+      return undefined;
+    }),
+  page: z.coerce.number().int().positive().optional().default(1),
+  size: z.coerce.number().int().positive().max(200).optional().default(50)
+});
+
+const dateOnlyFieldSchema = z
+  .string()
+  .regex(dateOnlyRegex, "YYYY-MM-DD 형식이어야 합니다.")
+  .refine((value) => isValidDateOnly(value), "유효한 날짜여야 합니다.");
+
+const adminInstitutionBaseSchema = z.object({
+  name: z.string().min(1).max(255),
+  typeCode: z.enum(institutionTypeCodeValues),
+  status: z.enum(institutionStatusValues).default("ACTIVE"),
+  contactName: z.string().optional(),
+  contactPhone: z.string().optional(),
+  addressRoad: z.string().optional(),
+  addressDetail: z.string().optional(),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+  memo: z.string().optional(),
+  contractStartDate: dateOnlyFieldSchema.optional(),
+  contractEndDate: dateOnlyFieldSchema.optional(),
+  fields: institutionFieldValuesSchema.default({})
+});
+
+const adminCreateInstitutionSchema = adminInstitutionBaseSchema
+  .extend({
+    schoolAdmin: z
+      .object({
+        loginId: z.string().min(1).max(120),
+        password: z.string().min(1).max(255)
+      })
+      .optional()
   })
+  .superRefine((value, ctx) => {
+    if (
+      value.contractStartDate &&
+      value.contractEndDate &&
+      value.contractStartDate >= value.contractEndDate
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["contractEndDate"],
+        message: "계약 종료일은 시작일보다 이후 날짜여야 합니다."
+      });
+    }
+
+    if (value.typeCode === "SCHOOL" && !value.schoolAdmin) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["schoolAdmin"],
+        message: "학교 기관 생성 시 학교 관리자 계정이 필요합니다."
+      });
+    }
+  });
+
+const adminUpdateInstitutionSchema = adminInstitutionBaseSchema.superRefine((value, ctx) => {
+  if (
+    value.contractStartDate &&
+    value.contractEndDate &&
+    value.contractStartDate >= value.contractEndDate
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["contractEndDate"],
+      message: "계약 종료일은 시작일보다 이후 날짜여야 합니다."
+    });
+  }
+});
+
+const adminInstitutionDeliveriesQuerySchema = z.object({
+  status: z.enum(["ACTIVE", "ENDED"]).optional()
+});
+
+const adminCreateDeliverySchema = z.object({
+  deviceId: z.string().min(1),
+  deliveredAt: z.string().datetime().optional(),
+  installLocation: z.string().optional(),
+  memo: z.string().optional()
+});
+
+const adminEndDeliverySchema = z.object({
+  retrievedAt: z.string().datetime().optional(),
+  memo: z.string().optional()
+});
+
+const adminInstitutionLogsQuerySchema = z.object({
+  actionType: z.string().optional(),
+  deviceId: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(500).optional().default(100),
+  from: z.string().optional(),
+  to: z.string().optional()
+});
+
+const adminGlobalInstitutionLogsQuerySchema = z.object({
+  institutionId: z.string().optional(),
+  actionType: z.string().optional(),
+  deviceId: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(500).optional().default(100),
+  from: z.string().optional(),
+  to: z.string().optional()
+});
+
+const adminUnassignedDevicesQuerySchema = z.object({
+  query: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(500).optional().default(100)
 });
 
 const adminLoginSchema = z.object({
@@ -142,6 +327,12 @@ const adminLoginSchema = z.object({
 
 const adminRefreshSchema = z.object({
   refreshToken: z.string().min(1)
+});
+
+const schoolLoginSchema = adminLoginSchema;
+const schoolRefreshSchema = adminRefreshSchema;
+const schoolChangePasswordSchema = z.object({
+  newPassword: z.string().min(1).max(255)
 });
 
 const adminApkListQuerySchema = z.object({
@@ -234,82 +425,44 @@ const adminStoreEventListQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(500).optional().default(100)
 });
 
-function issueAdminToken(prefix: "atk" | "rtk"): string {
-  return `${prefix}_${crypto.randomBytes(32).toString("hex")}`;
+async function loginAdmin(id: string, password: string) {
+  return authService.login(id, password, ["SUPER_ADMIN"]);
 }
 
-function sessionToResponse(session: AdminAuthSession) {
-  return {
-    accessToken: session.accessToken,
-    accessTokenExpiresAt: new Date(session.accessTokenExpiresAtMs).toISOString(),
-    refreshToken: session.refreshToken,
-    refreshTokenExpiresAt: new Date(session.refreshTokenExpiresAtMs).toISOString()
-  };
+async function refreshAdmin(refreshToken: string) {
+  return authService.refresh(refreshToken, ["SUPER_ADMIN"]);
 }
 
-function revokeSession(session: AdminAuthSession): void {
-  sessionsByAccessToken.delete(session.accessToken);
-  sessionsByRefreshToken.delete(session.refreshToken);
+async function loginSchool(id: string, password: string) {
+  return authService.login(id, password, ["SCHOOL_ADMIN"]);
 }
 
-function cleanupExpiredSessions(nowMs = Date.now()): void {
-  for (const session of Array.from(sessionsByRefreshToken.values())) {
-    if (session.refreshTokenExpiresAtMs <= nowMs) {
-      revokeSession(session);
-      continue;
-    }
-    if (session.accessTokenExpiresAtMs <= nowMs) {
-      sessionsByAccessToken.delete(session.accessToken);
-    }
+async function refreshSchool(refreshToken: string) {
+  return authService.refresh(refreshToken, ["SCHOOL_ADMIN"]);
+}
+
+async function requireAdmin(req: Request, res: Response): Promise<boolean> {
+  return authService.requireRole(req, res, ["SUPER_ADMIN"]);
+}
+
+async function requireSchool(req: Request, res: Response): Promise<boolean> {
+  return authService.requireRole(req, res, ["SCHOOL_ADMIN"]);
+}
+
+async function getAdminUserId(req: Request): Promise<string> {
+  const userId = await authService.getCurrentUserId(req);
+  if (!userId) {
+    throw new Error("ADMIN_UNAUTHORIZED");
   }
+  return userId;
 }
 
-function issueSession(userId: string): AdminAuthSession {
-  const nowMs = Date.now();
-  const session: AdminAuthSession = {
-    sessionId: uuidv4(),
-    userId,
-    accessToken: issueAdminToken("atk"),
-    refreshToken: issueAdminToken("rtk"),
-    accessTokenExpiresAtMs: nowMs + Math.max(1, accessTokenTtlMs),
-    refreshTokenExpiresAtMs: nowMs + Math.max(1, refreshTokenTtlMs)
-  };
-
-  sessionsByAccessToken.set(session.accessToken, session);
-  sessionsByRefreshToken.set(session.refreshToken, session);
-  return session;
+async function getSchoolUser(req: Request): Promise<AuthUserRecord | null> {
+  return authService.getCurrentUser(req);
 }
 
-function requireAdmin(req: Request, res: Response): boolean {
-  cleanupExpiredSessions();
-  const token = req.header("x-admin-token")?.trim();
-  if (!token) {
-    res.status(401).json({ message: "Unauthorized" });
-    return false;
-  }
-
-  const session = sessionsByAccessToken.get(token);
-  if (!session) {
-    res.status(401).json({ message: "Unauthorized" });
-    return false;
-  }
-
-  if (session.accessTokenExpiresAtMs <= Date.now()) {
-    sessionsByAccessToken.delete(session.accessToken);
-    res.status(401).json({ message: "Access token expired" });
-    return false;
-  }
-
-  return true;
-}
-
-function parseEnvNumber(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) {
-    return fallback;
-  }
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : fallback;
+async function changeSchoolPassword(userId: string, newPassword: string): Promise<void> {
+  await authService.changePassword(userId, newPassword, nowIso());
 }
 
 type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
@@ -521,12 +674,172 @@ function toAdminDeviceView(device: DeviceRecord) {
     installedApps: device.installedApps.map((app) => ({
       packageName: app.packageName,
       versionCode: app.versionCode
-    }))
+    })),
+    activeInstitution: device.activeInstitution
+      ? {
+          institutionId: device.activeInstitution.institutionId,
+          name: device.activeInstitution.name,
+          typeCode: device.activeInstitution.institutionTypeCode,
+          contractStartDate: device.activeInstitution.contractStartDate,
+          contractEndDate: device.activeInstitution.contractEndDate
+        }
+      : undefined,
+    activeDelivery: device.activeDelivery
+      ? {
+          deliveryId: device.activeDelivery.deliveryId,
+          deliveredAt: device.activeDelivery.deliveredAt,
+          installLocation: device.activeDelivery.installLocation,
+          memo: device.activeDelivery.memo
+        }
+      : undefined
   };
 }
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function isValidDateOnly(value: string): boolean {
+  if (!dateOnlyRegex.test(value)) {
+    return false;
+  }
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+  return parsed.toISOString().slice(0, 10) === value;
+}
+
+function nowSeoulDateKey(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
+function parseDateOnly(value?: string): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!isValidDateOnly(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+function isWithinContractPeriod(contractStartDate?: string, contractEndDate?: string): boolean {
+  const start = parseDateOnly(contractStartDate);
+  const end = parseDateOnly(contractEndDate);
+
+  if (!start && !end) {
+    return true;
+  }
+
+  const today = nowSeoulDateKey();
+  if (start && today < start) {
+    return false;
+  }
+
+  // End date is exclusive: e.g. start=2026-01-01, end=2026-02-01 allows until 2026-01-31.
+  if (end && today >= end) {
+    return false;
+  }
+
+  return true;
+}
+
+function toInstitutionLogFilters(
+  input: {
+    institutionId?: string;
+    actionType?: string;
+    deviceId?: string;
+    limit?: number;
+    from?: string;
+    to?: string;
+  }
+): InstitutionLogFilters {
+  return {
+    institutionId: input.institutionId?.trim() || undefined,
+    actionType: input.actionType?.trim() || undefined,
+    deviceId: input.deviceId?.trim() || undefined,
+    limit: input.limit,
+    from: input.from?.trim() || undefined,
+    to: input.to?.trim() || undefined
+  };
+}
+
+function mapInstitutionError(error: unknown): { status: number; message: string } | null {
+  const code = (error as { code?: string } | null)?.code;
+  if (code === "INSTITUTION_NAME_CONFLICT") {
+    return { status: 409, message: "INSTITUTION_NAME_CONFLICT" };
+  }
+  if (code === "DEVICE_ALREADY_DELIVERED") {
+    return { status: 409, message: "DEVICE_ALREADY_DELIVERED" };
+  }
+  if (code === "INSTITUTION_NOT_FOUND") {
+    return { status: 404, message: "기관을 찾을 수 없습니다." };
+  }
+  if (code === "DEVICE_NOT_FOUND") {
+    return { status: 404, message: "기기를 찾을 수 없습니다." };
+  }
+  if (code === "INSTITUTION_FIELD_VALIDATION_FAILED") {
+    return { status: 400, message: (error as Error).message || "기관 필드 검증에 실패했습니다." };
+  }
+  if (code === "DELIVERY_ALREADY_ENDED") {
+    return { status: 409, message: "이미 종료된 납품입니다." };
+  }
+  return null;
+}
+
+async function isDeviceCommandAllowed(deviceId: string): Promise<
+  | {
+      allowed: true;
+    }
+  | {
+      allowed: false;
+      reason: {
+        institutionId: string;
+        institutionName: string;
+        contractStartDate?: string;
+        contractEndDate?: string;
+      };
+    }
+> {
+  const contractWindow = await db.getDeviceContractWindow(deviceId);
+  if (!contractWindow) {
+    return { allowed: true };
+  }
+
+  const allowed = isWithinContractPeriod(contractWindow.contractStartDate, contractWindow.contractEndDate);
+  if (allowed) {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    reason: {
+      institutionId: contractWindow.institutionId,
+      institutionName: contractWindow.institutionName,
+      contractStartDate: contractWindow.contractStartDate,
+      contractEndDate: contractWindow.contractEndDate
+    }
+  };
+}
+
+function createPendingCommandRecord(deviceId: string, type: CommandType, payload: Record<string, unknown>): CommandRecord {
+  const now = nowIso();
+  return {
+    id: uuidv4(),
+    deviceId,
+    type,
+    payload,
+    status: "PENDING",
+    createdAt: now,
+    updatedAt: now
+  };
 }
 
 function parseCommandStatus(raw: string): CommandStatus | undefined {
@@ -621,709 +934,105 @@ const proxyDownloadHandler = asyncHandler(async (req, res) => {
   objectStream.pipe(res);
 });
 
-app.get("/health", (_req, res) => {
-  res.json({ ok: true, timestamp: nowIso() });
+registerHealthRoutes({
+  app,
+  nowIso
 });
 
-app.post(
-  "/api/admin/login",
-  asyncHandler(async (req, res) => {
-    cleanupExpiredSessions();
-
-    const parsed = adminLoginSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const { id, password } = parsed.data;
-    if (id !== hardcodedAdminId || password !== hardcodedAdminPassword) {
-      res.status(401).json({ message: "아이디 또는 비밀번호가 올바르지 않습니다." });
-      return;
-    }
-
-    const session = issueSession(id);
-    res.json(sessionToResponse(session));
-  })
-);
-
-app.post(
-  "/api/admin/refresh",
-  asyncHandler(async (req, res) => {
-    cleanupExpiredSessions();
-
-    const parsed = adminRefreshSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const refreshToken = parsed.data.refreshToken.trim();
-    const session = sessionsByRefreshToken.get(refreshToken);
-    if (!session) {
-      res.status(401).json({ message: "Refresh token이 유효하지 않습니다." });
-      return;
-    }
-
-    if (session.refreshTokenExpiresAtMs <= Date.now()) {
-      revokeSession(session);
-      res.status(401).json({ message: "Refresh token이 만료되었습니다." });
-      return;
-    }
-
-    revokeSession(session);
-    const nextSession = issueSession(session.userId);
-    res.json(sessionToResponse(nextSession));
-  })
-);
-
-app.get(
-  "/admin/devices",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const parsed = adminDeviceListQuerySchema.safeParse(req.query);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const devices = await db.listDevices(parsed.data.query);
-    res.json({
-      devices: devices.map(toAdminDeviceView)
-    });
-  })
-);
-
-app.post(
-  "/admin/devices",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const parsed = adminCreateDeviceSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const payload: CreateDeviceInput = {
-      deviceType: parsed.data.deviceType,
-      modelName: parsed.data.modelName,
-      locationName: parsed.data.location.name,
-      lat: parsed.data.location.lat,
-      lng: parsed.data.location.lng
-    };
-
-    const createdDeviceId = await db.createDevice(payload);
-
-    const device = await db.getDeviceById(createdDeviceId);
-    if (!device) {
-      res.status(500).json({ message: "기기 생성 후 조회에 실패했습니다." });
-      return;
-    }
-
-    res.status(201).json({ device: toAdminDeviceView(device) });
-  })
-);
-
-app.get(
-  "/admin/devices/next-id",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const parsed = adminNextDeviceQuerySchema.safeParse(req.query);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const preview = await db.previewNextDevice(parsed.data.deviceType);
-    res.json(preview);
-  })
-);
-
-app.get(
-  "/admin/devices/:deviceId",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const deviceId = routeParam(req.params.deviceId);
-    const device = await db.getDeviceById(deviceId);
-    if (!device) {
-      res.status(404).json({ message: "Device not found" });
-      return;
-    }
-
-    res.json({ device: toAdminDeviceView(device) });
-  })
-);
-
-app.get(
-  "/admin/apks",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const parsed = adminApkListQuerySchema.safeParse(req.query);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const query = parsed.data.query?.trim().toLowerCase() ?? "";
-    const packageFilter = parsed.data.packageName?.trim().toLowerCase() ?? "";
-    const entries = await db.getApps();
-
-    const items = entries
-      .flatMap((entry) => {
-        const releases = [...entry.releases].sort((a, b) => b.versionCode - a.versionCode);
-        if (parsed.data.latestOnly) {
-          const latest = releases[0];
-          return latest ? [toAdminApkItem(entry, latest)] : [];
-        }
-        return releases.map((release) => toAdminApkItem(entry, release));
-      })
-      .filter((item) => {
-        const queryMatch =
-          !query ||
-          item.packageName.toLowerCase().includes(query) ||
-          String(item.appId ?? "").toLowerCase().includes(query);
-        const packageMatch = !packageFilter || item.packageName.toLowerCase().includes(packageFilter);
-        return queryMatch && packageMatch;
-      })
-      .sort((a, b) => Date.parse(b.uploadedAt) - Date.parse(a.uploadedAt));
-
-    res.json({ items });
-  })
-);
-
-app.get(
-  "/admin/apks/:apkId",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const apkId = routeParam(req.params.apkId).trim();
-    if (!apkId) {
-      res.status(400).json({ message: "apkId 파라미터가 필요합니다." });
-      return;
-    }
-
-    const entries = await db.getApps();
-    const entry = findAppEntryByIdOrPackage(entries, apkId);
-    if (!entry) {
-      res.status(404).json({ message: "APK not found" });
-      return;
-    }
-
-    const versions = [...entry.releases]
-      .sort((a, b) => b.versionCode - a.versionCode)
-      .map((release) => toAdminApkItem(entry, release));
-
-    res.json({
-      apk: versions[0] ?? null,
-      versions
-    });
-  })
-);
-
-app.post(
-  "/admin/apks/upload",
-  upload.single("apk"),
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    if (!req.file) {
-      res.status(400).json({ message: "apk 파일이 필요합니다." });
-      return;
-    }
-
-    const parsed = adminApkUploadSchema.safeParse(req.body);
-    if (!parsed.success) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch {
-        // ignore cleanup error
-      }
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const data = parsed.data;
-    const packageName = data.packageName?.trim() || derivePackageNameFromFileName(req.file.originalname);
-    const appId = data.appId?.trim() || deriveAppIdFromPackageName(packageName);
-    const displayName = data.displayName?.trim() || packageName;
-    const versionName = data.versionName?.trim() || "1.0.0";
-    const versionCode = data.versionCode ?? 1;
-    const changelog = (data.releaseNote ?? data.changelog ?? "").trim();
-
-    const release = await persistUploadedRelease(req.file, {
-      appId,
-      packageName,
-      displayName,
-      versionName,
-      versionCode,
-      changelog,
-      autoUpdate: data.autoUpdate
-    });
-
-    res.status(201).json({
-      message: "업로드 완료",
-      apk: toAdminApkItemFromRelease(release),
-      release: toReleaseView(release)
-    });
-  })
-);
-
-app.get("/api/files/:fileName/download", proxyDownloadHandler);
-app.get("/downloads/:fileName", proxyDownloadHandler);
-
-app.get(
-  "/api/apps",
-  asyncHandler(async (_req, res) => {
-    const apps = (await db.getApps())
-      .map(toLatestAppView)
-      .filter((item): item is NonNullable<typeof item> => item !== null)
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
-
-    res.json({ apps });
-  })
-);
-
-app.get(
-  "/api/apps/:appId/releases",
-  asyncHandler(async (req, res) => {
-    const appId = routeParam(req.params.appId);
-    const appEntry = await db.getAppById(appId);
-    if (!appEntry) {
-      res.status(404).json({ message: "App not found" });
-      return;
-    }
-
-    const releases = [...appEntry.releases]
-      .sort((a, b) => b.versionCode - a.versionCode)
-      .map((release) => ({
-        ...release,
-        sha256: release.sha256 ?? "",
-        downloadUrl: buildDownloadUrl(release.fileName)
-      }));
-
-    res.json({ appId, releases });
-  })
-);
-
-app.post(
-  "/api/apps/upload",
-  upload.single("apk"),
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    if (!req.file) {
-      res.status(400).json({ message: "apk 파일이 필요합니다." });
-      return;
-    }
-
-    const parsed = uploadSchema.safeParse(req.body);
-    if (!parsed.success) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch {
-        // ignore cleanup error
-      }
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const payload = parsed.data;
-    const release = await persistUploadedRelease(req.file, {
-      appId: payload.appId,
-      packageName: payload.packageName,
-      displayName: payload.displayName,
-      versionName: payload.versionName,
-      versionCode: payload.versionCode,
-      changelog: payload.changelog,
-      autoUpdate: payload.autoUpdate
-    });
-
-    res.status(201).json({
-      message: "업로드 완료",
-      release: toReleaseView(release)
-    });
-  })
-);
-
-app.put(
-  "/api/apps/:appId",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const schema = z.object({
-      displayName: z.string().min(1).optional(),
-      packageName: z.string().min(3).optional()
-    });
-
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const updated = await db.updateApp(routeParam(req.params.appId), parsed.data);
-    if (!updated) {
-      res.status(404).json({ message: "App not found" });
-      return;
-    }
-
-    res.json({ message: "앱 정보가 수정되었습니다." });
-  })
-);
-
-app.get(
-  "/api/settings",
-  asyncHandler(async (_req, res) => {
-    const settings = await db.getSettings();
-    res.json({ settings });
-  })
-);
-
-app.put(
-  "/api/settings",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const parsed = settingsSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "settings는 string key-value 형태여야 합니다." });
-      return;
-    }
-
-    const settings = parsed.data;
-    await db.replaceSettings(settings);
-    res.json({ message: "설정 저장 완료", settings });
-  })
-);
-
-app.post(
-  "/api/devices/check-updates",
-  asyncHandler(async (req, res) => {
-    const parsed = checkUpdatesSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const payload = parsed.data;
-    const packageMap = new Map(payload.packages.map((item) => [item.packageName, item.versionCode]));
-    const now = nowIso();
-
-    await db.saveDeviceState(payload.deviceId, Object.fromEntries(packageMap.entries()), now);
-    const [settings, latestReleases] = await Promise.all([db.getSettings(), db.getLatestReleases()]);
-
-    const updates = latestReleases
-      .map((latest) => {
-        const installedVersion = packageMap.get(latest.packageName) ?? -1;
-        const shouldUpdate = latest.autoUpdate && latest.versionCode > installedVersion;
-        if (!shouldUpdate) {
-          return null;
-        }
-
-        return {
-          appId: latest.appId,
-          displayName: latest.displayName,
-          packageName: latest.packageName,
-          installedVersionCode: installedVersion,
-          targetVersionCode: latest.versionCode,
-          targetVersionName: latest.versionName,
-          changelog: latest.changelog,
-          sha256: latest.sha256 ?? "",
-          downloadUrl: buildDownloadUrl(latest.fileName)
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => item !== null);
-
-    res.json({
-      deviceId: payload.deviceId,
-      checkedAt: now,
-      settings,
-      updates
-    });
-  })
-);
-
-app.post(
-  "/api/store/devices/sync",
-  asyncHandler(async (req, res) => {
-    const parsed = storeSyncSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const payload = parsed.data;
-    const packageMap = new Map(payload.packages.map((item) => [item.packageName, item.versionCode]));
-    const latestReleases = await db.getLatestReleases();
-    const now = nowIso();
-
-    const updates = latestReleases
-      .map((latest) => {
-        const installedVersion = packageMap.get(latest.packageName) ?? -1;
-        if (latest.versionCode <= installedVersion) {
-          return null;
-        }
-        return toStoreUpdateView(latest, installedVersion);
-      })
-      .filter((item): item is NonNullable<typeof item> => item !== null)
-      .sort((a, b) => a.displayName.localeCompare(b.displayName));
-
-    const syncInput: StoreDeviceSyncInput = {
-      deviceId: payload.deviceId.trim(),
-      deviceName: payload.deviceName?.trim() || undefined,
-      modelName: payload.modelName?.trim() || undefined,
-      platform: payload.platform?.trim() || undefined,
-      osVersion: payload.osVersion?.trim() || undefined,
-      appStoreVersion: payload.appStoreVersion?.trim() || undefined,
-      ipAddress: payload.ipAddress?.trim() || resolveClientIp(req),
-      syncedAt: now,
-      availableUpdateCount: updates.length,
-      packages: payload.packages.map(
-        (item): StoreDevicePackageVersion => ({
-          packageName: item.packageName.trim(),
-          versionCode: item.versionCode,
-          versionName: item.versionName?.trim() || undefined,
-          syncedAt: now
-        })
-      )
-    };
-
-    await db.saveStoreDeviceSync(syncInput);
-
-    res.json({
-      deviceId: payload.deviceId,
-      syncedAt: now,
-      updates
-    });
-  })
-);
-
-app.post(
-  "/api/store/devices/:deviceId/events",
-  asyncHandler(async (req, res) => {
-    const deviceId = routeParam(req.params.deviceId).trim();
-    if (!deviceId) {
-      res.status(400).json({ message: "deviceId 파라미터가 필요합니다." });
-      return;
-    }
-
-    const parsed = storeEventSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const payload = parsed.data;
-    const status: StoreUpdateEventStatus = payload.status;
-    const createdAt = nowIso();
-    const eventId = uuidv4();
-
-    await db.createStoreUpdateEvent({
-      id: eventId,
-      deviceId,
-      packageName: payload.packageName.trim(),
-      appId: payload.appId?.trim() || undefined,
-      releaseId: payload.releaseId?.trim() || undefined,
-      targetVersionName: payload.targetVersionName?.trim() || undefined,
-      targetVersionCode: payload.targetVersionCode,
-      eventType: payload.eventType,
-      status,
-      message: payload.message?.trim() || undefined,
-      metadata: payload.metadata,
-      createdAt
-    });
-
-    res.status(201).json({
-      message: "이벤트 저장 완료",
-      eventId
-    });
-  })
-);
-
-app.get(
-  "/admin/store/devices",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const parsed = adminStoreDeviceListQuerySchema.safeParse(req.query);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const devices = await db.listStoreDevices(parsed.data.query);
-    res.json({ devices });
-  })
-);
-
-app.get(
-  "/admin/store/devices/:deviceId",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const deviceId = routeParam(req.params.deviceId).trim();
-    if (!deviceId) {
-      res.status(400).json({ message: "deviceId 파라미터가 필요합니다." });
-      return;
-    }
-
-    const device = await db.getStoreDevice(deviceId);
-    if (!device) {
-      res.status(404).json({ message: "Store device not found" });
-      return;
-    }
-
-    res.json({ device });
-  })
-);
-
-app.get(
-  "/admin/store/events",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const parsed = adminStoreEventListQuerySchema.safeParse(req.query);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const events = await db.listStoreUpdateEvents({
-      deviceId: parsed.data.deviceId?.trim() || undefined,
-      packageName: parsed.data.packageName?.trim() || undefined,
-      limit: parsed.data.limit
-    });
-
-    res.json({ events });
-  })
-);
-
-app.post(
-  "/api/commands",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const parsed = createCommandSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const payload = parsed.data;
-    const now = nowIso();
-    const command: CommandRecord = {
-      id: uuidv4(),
-      deviceId: payload.deviceId,
-      type: payload.type as CommandType,
-      payload: payload.payload,
-      status: "PENDING",
-      createdAt: now,
-      updatedAt: now
-    };
-
-    await db.createCommand(command);
-    res.status(201).json({ message: "명령 생성 완료", command });
-  })
-);
-
-app.get(
-  "/api/commands",
-  asyncHandler(async (req, res) => {
-    if (!requireAdmin(req, res)) {
-      return;
-    }
-
-    const deviceId = String(req.query.deviceId ?? "").trim();
-    const status = parseCommandStatus(String(req.query.status ?? "").trim());
-
-    const commands = await db.listCommands({
-      deviceId: deviceId || undefined,
-      status
-    });
-
-    res.json({ commands });
-  })
-);
-
-app.post(
-  "/api/devices/:deviceId/commands/pull",
-  asyncHandler(async (req, res) => {
-    const deviceId = routeParam(req.params.deviceId);
-    const parsed = pullCommandsSchema.safeParse(req.body ?? {});
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const now = nowIso();
-    const commands = await db.pullPendingCommands(deviceId, parsed.data.max, now);
-    res.json({ deviceId, commands });
-  })
-);
-
-app.post(
-  "/api/devices/:deviceId/commands/:commandId/result",
-  asyncHandler(async (req, res) => {
-    const deviceId = routeParam(req.params.deviceId);
-    const commandId = routeParam(req.params.commandId);
-
-    const parsed = commandResultSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ message: "입력값이 올바르지 않습니다.", issues: parsed.error.issues });
-      return;
-    }
-
-    const payload = parsed.data;
-    const updated = await db.updateCommandResult({
-      deviceId,
-      commandId,
-      status: payload.status,
-      resultMessage: payload.resultMessage,
-      resultCode: payload.resultCode,
-      updatedAt: nowIso()
-    });
-
-    if (!updated) {
-      res.status(404).json({ message: "Command not found" });
-      return;
-    }
-
-    res.json({ message: "명령 결과 저장 완료", command: updated });
-  })
-);
+registerAdminRoutes({
+  app,
+  asyncHandler,
+  db,
+  upload,
+  loginAdmin,
+  refreshAdmin,
+  adminLoginSchema,
+  adminRefreshSchema,
+  adminDeviceListQuerySchema,
+  adminCreateDeviceSchema,
+  adminNextDeviceQuerySchema,
+  adminDeviceCommandListQuerySchema,
+  adminCreateDeviceCommandSchema,
+  adminInstitutionListQuerySchema,
+  adminCreateInstitutionSchema,
+  adminUnassignedDevicesQuerySchema,
+  adminGlobalInstitutionLogsQuerySchema,
+  adminUpdateInstitutionSchema,
+  adminInstitutionDeliveriesQuerySchema,
+  adminCreateDeliverySchema,
+  adminEndDeliverySchema,
+  adminInstitutionLogsQuerySchema,
+  adminApkListQuerySchema,
+  adminApkUploadSchema,
+  requireAdmin,
+  routeParam,
+  getAdminUserId,
+  nowIso,
+  mapInstitutionError,
+  isDeviceCommandAllowed,
+  createPendingCommandRecord,
+  toAdminDeviceView,
+  toInstitutionLogFilters,
+  toAdminApkItem,
+  toAdminApkItemFromRelease,
+  toReleaseView,
+  findAppEntryByIdOrPackage,
+  persistUploadedRelease,
+  derivePackageNameFromFileName,
+  deriveAppIdFromPackageName
+});
+
+registerSchoolRoutes({
+  app,
+  asyncHandler,
+  schoolLoginSchema,
+  schoolRefreshSchema,
+  schoolChangePasswordSchema,
+  loginSchool,
+  refreshSchool,
+  requireSchool,
+  getSchoolUser,
+  changeSchoolPassword
+});
+
+registerApiRoutes({
+  app,
+  asyncHandler,
+  db,
+  upload,
+  proxyDownloadHandler,
+  uploadSchema,
+  settingsSchema,
+  checkUpdatesSchema,
+  createCommandSchema,
+  pullCommandsSchema,
+  commandResultSchema,
+  requireAdmin,
+  routeParam,
+  nowIso,
+  buildDownloadUrl,
+  parseCommandStatus,
+  isDeviceCommandAllowed,
+  createPendingCommandRecord,
+  toLatestAppView,
+  toReleaseView,
+  persistUploadedRelease
+});
+
+registerStoreRoutes({
+  app,
+  asyncHandler,
+  db,
+  storeSyncSchema,
+  storeEventSchema,
+  adminStoreDeviceListQuerySchema,
+  adminStoreEventListQuerySchema,
+  requireAdmin,
+  routeParam,
+  resolveClientIp,
+  nowIso,
+  toStoreUpdateView
+});
 
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error("[api-server] unhandled error:", error);
@@ -1334,6 +1043,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 async function bootstrap(): Promise<void> {
+  await redisClient.connect();
   await objectStorage.init();
   await db.init();
   app.listen(port, () => {
@@ -1347,9 +1057,9 @@ void bootstrap().catch((error) => {
 });
 
 process.on("SIGINT", () => {
-  void db.close().finally(() => process.exit(0));
+  void Promise.allSettled([db.close(), redisClient.quit()]).finally(() => process.exit(0));
 });
 
 process.on("SIGTERM", () => {
-  void db.close().finally(() => process.exit(0));
+  void Promise.allSettled([db.close(), redisClient.quit()]).finally(() => process.exit(0));
 });

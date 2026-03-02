@@ -7,7 +7,8 @@
 - `apps/sistrun-dance`: AI BOX 연결 + RTSP/프레임 수신 + Pose 스켈레톤 오버레이 앱
 - `apps/pe-board`: 전자칠판 체육 수업 운영 앱(Expo/React Native)
 - `api-server`: 마켓/설정/자동업데이트 API 서버 (TypeScript/Node.js)
-- `web-admin`: 슈퍼관리자 웹 콘솔 (React + Vite)
+- `web/admin`: 슈퍼관리자 웹 콘솔 (React + Vite)
+- `web/school`: 학교 관리자 웹 포털 (React + Vite)
 - `python/ai_box_server`: AI BOX 서버(Python, TCP 8090)
 - `protocol/streaming_protocol.md`: Android <-> AI BOX 메시지 규격
 
@@ -31,7 +32,15 @@ npm run dev
 ## 1-2) 슈퍼관리자 웹 실행
 
 ```bash
-cd web-admin
+cd web/admin
+npm install
+npm run dev
+```
+
+## 1-3) 학교 관리자 웹 실행
+
+```bash
+cd web/school
 npm install
 npm run dev
 ```

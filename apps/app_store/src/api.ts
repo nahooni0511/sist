@@ -24,6 +24,19 @@ const BASE_URL_CANDIDATES = Array.from(
 
 export const API_BASE_URL = BASE_URL_CANDIDATES[0] ?? "http://localhost:4000";
 let activeBaseUrl = API_BASE_URL;
+let consecutiveFailures = 0;
+let circuitOpenedAtMs = 0;
+
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_COOLDOWN_MS = 20_000;
+const RETRY_MAX_ATTEMPTS = 3;
+const RETRY_BACKOFF_BASE_MS = 500;
+const APPS_CACHE_TTL_MS = 30_000;
+
+let appsCache: {
+  fetchedAtMs: number;
+  apps: StoreApp[];
+} | null = null;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -34,6 +47,10 @@ class RequestError extends Error {
     super(message);
     this.retryable = retryable;
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function safeText(value: unknown, fallback = ""): string {
@@ -75,7 +92,8 @@ function normalizeApp(raw: Record<string, unknown>): StoreApp | null {
       uploadedAt: safeText(release.uploadedAt),
       fileSize: safeNumber(release.fileSize, 0),
       sha256: safeText(release.sha256),
-      downloadUrl: safeText(release.downloadUrl)
+      downloadUrl: safeText(release.downloadUrl),
+      signerSha256: safeText(release.signerSha256 || release.signer_sha256) || undefined
     }
   };
 }
@@ -101,7 +119,8 @@ function normalizeSyncUpdate(raw: Record<string, unknown>): StoreSyncUpdate | nu
     fileSize: safeNumber(raw.fileSize, 0),
     uploadedAt: safeText(raw.uploadedAt),
     autoUpdate: Boolean(raw.autoUpdate),
-    downloadUrl: safeText(raw.downloadUrl)
+    downloadUrl: safeText(raw.downloadUrl),
+    signerSha256: safeText(raw.signerSha256 || raw.signer_sha256) || undefined
   };
 }
 
@@ -112,23 +131,57 @@ function shouldRetryByError(error: unknown): boolean {
   return true;
 }
 
+function isCircuitOpen(): boolean {
+  if (consecutiveFailures < CIRCUIT_BREAKER_THRESHOLD) {
+    return false;
+  }
+  return Date.now() - circuitOpenedAtMs < CIRCUIT_BREAKER_COOLDOWN_MS;
+}
+
+function recordFailure(): void {
+  consecutiveFailures += 1;
+  if (consecutiveFailures >= CIRCUIT_BREAKER_THRESHOLD && circuitOpenedAtMs <= 0) {
+    circuitOpenedAtMs = Date.now();
+  }
+}
+
+function recordSuccess(): void {
+  consecutiveFailures = 0;
+  circuitOpenedAtMs = 0;
+}
+
 async function requestWithFallback<T>(runner: (baseUrl: string) => Promise<T>): Promise<T> {
+  if (isCircuitOpen()) {
+    throw new Error("서버 일시 장애(circuit open). 잠시 후 다시 시도해 주세요.");
+  }
+
   const orderedBaseUrls = [activeBaseUrl, ...BASE_URL_CANDIDATES.filter((baseUrl) => baseUrl !== activeBaseUrl)];
   let lastError: unknown = null;
 
   for (const baseUrl of orderedBaseUrls) {
-    try {
-      const result = await runner(baseUrl);
-      activeBaseUrl = baseUrl;
-      return result;
-    } catch (error) {
-      lastError = error;
-      if (!shouldRetryByError(error)) {
-        throw error;
+    for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const result = await runner(baseUrl);
+        activeBaseUrl = baseUrl;
+        recordSuccess();
+        return result;
+      } catch (error) {
+        lastError = error;
+        if (!shouldRetryByError(error)) {
+          recordFailure();
+          throw error;
+        }
+
+        if (attempt < RETRY_MAX_ATTEMPTS) {
+          const backoff = RETRY_BACKOFF_BASE_MS * 2 ** (attempt - 1);
+          await sleep(backoff);
+          continue;
+        }
       }
     }
   }
 
+  recordFailure();
   throw lastError ?? new Error("요청 실패");
 }
 
@@ -200,13 +253,23 @@ export function getCurrentApiBaseUrl(): string {
 }
 
 export async function fetchStoreApps(signal?: AbortSignal): Promise<StoreApp[]> {
+  if (appsCache && Date.now() - appsCache.fetchedAtMs < APPS_CACHE_TTL_MS) {
+    return appsCache.apps;
+  }
+
   const payload = (await getJson("/api/apps", signal)) as AppListResponse;
   const apps = Array.isArray(payload.apps) ? payload.apps : [];
 
-  return apps
+  const normalizedApps = apps
     .map((item) => normalizeApp(item as Record<string, unknown>))
     .filter((item): item is StoreApp => item !== null)
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
+
+  appsCache = {
+    fetchedAtMs: Date.now(),
+    apps: normalizedApps
+  };
+  return normalizedApps;
 }
 
 export async function syncStoreDevice(input: {

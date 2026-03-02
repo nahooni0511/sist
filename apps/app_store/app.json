@@ -15,7 +15,11 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.sistrun.appstore",
+      "package": "kr.sist.appstore",
+      "permissions": [
+        "REQUEST_INSTALL_PACKAGES",
+        "POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -24,6 +28,15 @@
       },
       "predictiveBackGestureEnabled": false
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#1D4ED8"
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     }

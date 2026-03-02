@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "sist app store",
+    "slug": "sist-app-store",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#06070b"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "kr.sist.appstore-mock1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B1020",
+        "foregroundImage": "./assets/android-icon-foreground.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "kr.sist.appstore_mock1"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
